@@ -1,97 +1,66 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# EnRuta V2
 
-# Getting Started
+## Prerequisites
+- [Node.js](https://nodejs.org) and npm (Recommended: Use [nvm](https://github.com/nvm-sh/nvm)).
+- [React Native](https://reactnative.dev/docs/set-up-your-environment).
+- [Android Studio and Android SDK](https://developer.android.com/studio).
+- [Strcpy](https://github.com/Genymobile/scrcpy) to display and control of Android devices connected via USB.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+## Installation
+Clone the [repository](https://github.com/buriti8/buritv_mobile.git)
 
-## Step 1: Start Metro
+Install all the dependencies using yarn
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+    yarn install
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+## Android Studio
+Open the `android` folder in Android Studio and let it sync the Gradle files.
+Clean and Clean and Rebuild the project to ensure all dependencies are correctly set up.
 
-```sh
-# Using npm
-npm start
+Open Settings > Build Tools > Gradle > Set Gradle JDK:
+- `JetBrains Runtime 21.0.10`
+- `C:\Program Files\Android\Android Studio\jbr`
 
-# OR using Yarn
-yarn start
-```
+Open Settings > Languages & Frameworks > Android SDK > SDK Platforms > Show Package Details > Install the following components:
 
-## Step 2: Build and run your app
+- Android 16.0 ("Baklava"):
+    - Android SDK Platform 36
+    - Sources for Android 36
+    - Intel x86_64 Atom System Image
+    - Google APIs ARM 64 v8a System Image
+    - Google APIs Intel x86_64 Atom System Image
+    - Google Play ARM 64 v8a System Image
+    - Google Play Intel x86_64 Atom System Image
+    - Pre-Release 16 KB Page Size Google Play Intel x86_64 Atom System Image
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+- Android 15.0 ("VanillaIceCream"):
+    - Android SDK Platform 35
+    - Sources for Android 35
 
-### Android
+## Execution
 
-```sh
-# Using npm
-npm run android
+    npx react-native run-android --port=1234
 
-# OR using Yarn
-yarn android
-```
+## Remote Update
 
-### iOS
+- [Hot Updater](https://hot-updater.dev/docs/guides/deploy)
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+### Validate environment
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+    android/app/src/main/res/values/strings.xml
+    
+    .env.hotupdater
 
-```sh
-bundle install
-```
+### Release an update
 
-Then, and every time you update your native dependencies, run:
+#### Android
 
-```sh
-bundle exec pod install
-```
+    yarn hot-updater deploy -m '' -f -p android -t 4.3.2 -c "enruta_v2_production"
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+#### iOS
 
-```sh
-# Using npm
-npm run ios
+    yarn hot-updater deploy -m '' -f -p ios -t 4.3.2 -c "enruta_v2_production"
 
-# OR using Yarn
-yarn ios
-```
+### Visualize the update
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
-
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
-
-## Step 3: Modify your app
-
-Now that you have successfully run the app, let's make changes!
-
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
-
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
-
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+    npx hot-updater console

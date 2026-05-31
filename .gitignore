@@ -73,3 +73,14 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+package-lock.json
+ios/Podfile.lock
+android/app/release/*
+# hot-updater
+.env.hotupdater
+.hot-updater/output
+.hot-updater/log
+
+# libc++_shared.so generado automáticamente por la tarea bundleNdkLibcxx (desde el NDK)
+android/app/src/main/jniLibs/*/libc++_shared.so

@@ -1,0 +1,19 @@
+diff --git a/node_modules/metro/src/Server.js b/node_modules/metro/src/Server.js
+index 38eea43..051d11b 100644
+--- a/node_modules/metro/src/Server.js
++++ b/node_modules/metro/src/Server.js
+@@ -439,14 +439,12 @@ class Server {
+       }),
+     );
+     try {
+-      const depGraph = await this._bundler.getBundler().getDependencyGraph();
+       const data = await (0, _Assets.getAsset)(
+         assetPath,
+         this._config.projectRoot,
+         this._config.watchFolders,
+         urlObj.searchParams.get("platform"),
+         this._config.resolver.assetExts,
+-        (filePath) => depGraph.doesFileExist(filePath),
+       );
+       if (process.env.REACT_NATIVE_ENABLE_ASSET_CACHING === true) {
+         res.setHeader("Cache-Control", "max-age=31536000");

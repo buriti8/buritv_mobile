@@ -1,3 +1,9 @@
 <resources>
     <string name="app_name">BuriTV</string>
+
+    <!-- Production -->
+    <string name="hot_updater_channel" moduleConfig="true">buritv_production</string>
+
+    <!-- Test -->
+    <!-- <string name="hot_updater_channel" moduleConfig="true">buritv_test</string> -->
 </resources>
