@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { BackHandler } from 'react-native';
 import Orientation from 'react-native-orientation-locker';
 import { isTV } from '../constants/config';
 
@@ -50,6 +51,21 @@ export default function useMobileControls({ loading }) {
             showControls();
         }
     }, [controlsVisible, showControls]);
+
+    // Botón atrás en fullscreen → salir de fullscreen en vez de cerrar la app
+    useEffect(() => {
+        if (isTV) return;
+        const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+            if (fullscreen) {
+                Orientation.lockToPortrait();
+                setFullscreen(false);
+                showControls();
+                return true; // consumir el evento
+            }
+            return false; // dejar que el sistema maneje (salir de app)
+        });
+        return () => sub.remove();
+    }, [fullscreen, showControls]);
 
     // Cleanup
     useEffect(() => {
