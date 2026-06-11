@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
     View,
     Text,
     ScrollView,
     StatusBar,
     useWindowDimensions,
+    findNodeHandle,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TVFocusGuideView } from 'react-native';
@@ -52,6 +53,22 @@ export default function TVLayout({
 }) {
     const { height: winH } = useWindowDimensions();
     const insets = useSafeAreaInsets();
+
+    // ── Navegación circular: último↓→primero, primero↑→último ───────────
+    const firstRowRef = useRef(null);
+    const lastRowRef = useRef(null);
+    const [firstNodeId, setFirstNodeId] = useState(null);
+    const [lastNodeId, setLastNodeId] = useState(null);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            const fId = findNodeHandle(firstRowRef.current);
+            const lId = findNodeHandle(lastRowRef.current);
+            if (fId) setFirstNodeId(fId);
+            if (lId) setLastNodeId(lId);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [channels.length]);
 
     const playerColumn = (
         <View style={styles.tvPlayerCol}>
@@ -125,32 +142,45 @@ export default function TVLayout({
                             contentContainerStyle={styles.listContentTV}
                             showsVerticalScrollIndicator={false}
                         >
-                            {channels.map((item, index) => (
-                                <ChannelRow
-                                    key={index}
-                                    item={item}
-                                    index={index}
-                                    active={item.url === current?.url}
-                                    focused={listFocused === index}
-                                    hasTVPreferredFocus={
-                                        currentIndex >= 0
-                                            ? index === currentIndex
-                                            : index === 0
-                                    }
-                                    onFocus={() => {
-                                        setListFocused(index);
-                                        tvScrollToIndex(index);
-                                        clearTimeout(tvHideTimer.current);
-                                        setTvUiVisible(false);
-                                    }}
-                                    onBlur={() =>
-                                        setListFocused((f) =>
-                                            f === index ? -1 : f,
-                                        )
-                                    }
-                                    onPress={() => selectChannel(item)}
-                                />
-                            ))}
+                            {channels.map((item, index) => {
+                                const isFirst = index === 0;
+                                const isLast = index === channels.length - 1;
+                                return (
+                                    <ChannelRow
+                                        key={index}
+                                        ref={
+                                            isFirst
+                                                ? firstRowRef
+                                                : isLast
+                                                  ? lastRowRef
+                                                  : undefined
+                                        }
+                                        item={item}
+                                        index={index}
+                                        active={item.url === current?.url}
+                                        focused={listFocused === index}
+                                        hasTVPreferredFocus={
+                                            currentIndex >= 0
+                                                ? index === currentIndex
+                                                : index === 0
+                                        }
+                                        nextFocusUp={isFirst ? lastNodeId : undefined}
+                                        nextFocusDown={isLast ? firstNodeId : undefined}
+                                        onFocus={() => {
+                                            setListFocused(index);
+                                            tvScrollToIndex(index);
+                                            clearTimeout(tvHideTimer.current);
+                                            setTvUiVisible(false);
+                                        }}
+                                        onBlur={() =>
+                                            setListFocused((f) =>
+                                                f === index ? -1 : f,
+                                            )
+                                        }
+                                        onPress={() => selectChannel(item)}
+                                    />
+                                );
+                            })}
                         </ScrollView>
                     </TVFocusGuideView>
                 </View>

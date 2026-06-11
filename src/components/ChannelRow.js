@@ -5,23 +5,31 @@ import { isTV } from '../constants/config';
 import { C } from '../constants/colors';
 import { styles } from '../styles/styles';
 
-export default function ChannelRow({
-    item,
-    index,
-    active,
-    focused,
-    onPress,
-    onFocus,
-    onBlur,
-    hasTVPreferredFocus,
-}) {
+const ChannelRow = React.forwardRef(function ChannelRow(
+    {
+        item,
+        index,
+        active,
+        focused,
+        onPress,
+        onFocus,
+        onBlur,
+        hasTVPreferredFocus,
+        nextFocusUp,
+        nextFocusDown,
+    },
+    ref,
+) {
     const logoSize = isTV ? 28 : 22;
     const [logoError, setLogoError] = useState(false);
 
     return (
         <Pressable
+            ref={ref}
             focusable={isTV}
             hasTVPreferredFocus={!!hasTVPreferredFocus}
+            nextFocusUp={nextFocusUp}
+            nextFocusDown={nextFocusDown}
             onPress={onPress}
             onFocus={onFocus}
             onBlur={onBlur}
@@ -80,4 +88,6 @@ export default function ChannelRow({
             )}
         </Pressable>
     );
-}
+});
+
+export default ChannelRow;
