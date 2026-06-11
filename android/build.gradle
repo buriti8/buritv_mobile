@@ -30,6 +30,23 @@ allprojects {
     }
 }
 
+subprojects {
+    afterEvaluate { project ->
+        if (project.hasProperty("android")) {
+            project.android {
+                packagingOptions {
+                    jniLibs {
+                        pickFirst 'lib/arm64-v8a/libc++_shared.so'
+                        pickFirst 'lib/armeabi-v7a/libc++_shared.so'
+                        pickFirst 'lib/x86/libc++_shared.so'
+                        pickFirst 'lib/x86_64/libc++_shared.so'
+                    }
+                }
+            }
+        }
+    }
+}
+
 def getNpmVersion() {
     def inputFile = new File(rootDir, "../package.json")
     def packageJson = new JsonSlurper().parseText(inputFile.text)
