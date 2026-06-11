@@ -29,6 +29,7 @@ export default function useStreamRecovery({
     const playbackStarted = useRef(false);
     const softRetries = useRef(0);
     const appStateRef = useRef(AppState.currentState);
+    const pendingUnmute = useRef(false);
 
     // ── onProgress handler ──────────────────────────────────────────────
     const handleProgress = useCallback((e) => {
@@ -36,12 +37,19 @@ export default function useStreamRecovery({
         if (t != null && t !== lastProgressTime.current) {
             lastProgressTime.current = t;
             lastProgressAt.current = Date.now();
+
             if (!playbackStarted.current) {
                 playbackStarted.current = true;
                 softRetries.current = 0;
             }
+
+            // Unmute cuando hay progreso real (VLC ya tiene audio activo)
+            if (pendingUnmute.current) {
+                pendingUnmute.current = false;
+                setMuted(false);
+            }
         }
-    }, []);
+    }, [setMuted]);
 
     // ── Reset al cambiar canal o hacer reload ───────────────────────────
     useEffect(() => {
@@ -51,11 +59,20 @@ export default function useStreamRecovery({
         softRetries.current = 0;
     }, [current, playerKey]);
 
-    // ── Fix audio: toggle muted en reload ───────────────────────────────
+    // ── Fix audio: marcar pending, unmutear solo cuando haya progreso real ──
     useEffect(() => {
         if (playerKey === 0) return;
         setMuted(true);
-        const t = setTimeout(() => setMuted(false), 150);
+        pendingUnmute.current = true;
+
+        // Fallback: si en 2s no hubo progreso, desmutea igual
+        const t = setTimeout(() => {
+            if (pendingUnmute.current) {
+                pendingUnmute.current = false;
+                setMuted(false);
+            }
+        }, 2000);
+
         return () => clearTimeout(t);
     }, [playerKey, setMuted]);
 
