@@ -1,6 +1,6 @@
 {
     "name": "BuriTV",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "private": true,
     "scripts": {
         "android": "react-native run-android",
@@ -11,6 +11,7 @@
     },
     "dependencies": {
         "@hot-updater/react-native": "^0.30.11",
+        "@react-native-async-storage/async-storage": "^3.1.1",
         "@react-native-vector-icons/fontawesome": "^13.1.0",
         "@react-native-vector-icons/fontawesome6": "^13.1.2",
         "hot-updater": "^0.30.11",

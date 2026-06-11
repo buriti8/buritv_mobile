@@ -1,16 +1,17 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
-    View, Text, FlatList, ScrollView, StyleSheet,
+    View, Text, FlatList, ScrollView, StyleSheet, Image,
     ActivityIndicator, Pressable, StatusBar, Platform,
     TVFocusGuideView, BackHandler, useTVEventHandler,
-    useWindowDimensions,
+    useWindowDimensions, AppState,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VLCPlayer } from 'react-native-vlc-media-player';
 import Orientation from 'react-native-orientation-locker';
 import { FontAwesome6 } from '@react-native-vector-icons/fontawesome6';
 import GoogleCast, { CastButton } from 'react-native-google-cast';
 import KeepAwake from 'react-native-keep-awake';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const isTV = Platform.isTV;
 
@@ -42,13 +43,26 @@ const MOBILE_ROW_H = 48;
 function parseM3U(data) {
     const lines = data.split('\n');
     const channels = [];
+    const globalVlcOpts = [];       // #EXTVLCOPT antes del primer #EXTINF
     let currentName = '';
     let currentLogo = '';
     let currentGroup = '';
+    let currentVlcOpts = [];        // #EXTVLCOPT del canal actual
+    let seenFirstExtinf = false;
+
     for (let raw of lines) {
         const line = raw.trim();
         if (!line) continue;
-        if (line.startsWith('#EXTINF')) {
+
+        if (line.startsWith('#EXTVLCOPT:')) {
+            const opt = line.substring(11).trim();   // quitar "#EXTVLCOPT:"
+            if (!seenFirstExtinf) {
+                globalVlcOpts.push(opt);             // opción global
+            } else {
+                currentVlcOpts.push(opt);            // opción por canal
+            }
+        } else if (line.startsWith('#EXTINF')) {
+            seenFirstExtinf = true;
             const logo = line.match(/tvg-logo="([^"]*)"/i);
             const group = line.match(/group-title="([^"]*)"/i);
             currentLogo = logo ? logo[1] : '';
@@ -61,13 +75,19 @@ function parseM3U(data) {
                 url: line,
                 logo: currentLogo,
                 group: currentGroup,
+                vlcOpts: currentVlcOpts.length ? currentVlcOpts : null,
             });
             currentName = '';
             currentLogo = '';
             currentGroup = '';
+            currentVlcOpts = [];
         }
     }
-    return channels;
+
+    // Convertir opciones a formato VLC (--opcion o --opcion=valor)
+    const toVlcFlags = (opts) => opts.map(o => (o.includes('=') ? `--${o}` : `--${o}`));
+
+    return { channels, globalVlcOpts: toVlcFlags(globalVlcOpts) };
 }
 
 // ─── CountdownDots ────────────────────────────────────────────────────────────
@@ -86,7 +106,7 @@ function CountdownDots() {
 // ─── Botón de control (enfocable nativo en TV) ─────────────────────────────────
 
 const ControlButton = React.forwardRef(function ControlButton(
-    { icon, size, onPress, onFocus, onBlur, focused, big, hasTVPreferredFocus },
+    { icon, size, onPress, onFocus, onBlur, focused, hasTVPreferredFocus },
     ref,
 ) {
     return (
@@ -100,7 +120,6 @@ const ControlButton = React.forwardRef(function ControlButton(
             hitSlop={8}
             style={({ pressed }) => [
                 s.ctrlBtn,
-                big && s.ctrlBtnBig,
                 focused && s.ctrlBtnFocused,
                 pressed && !isTV && s.ctrlBtnPressed,
             ]}>
@@ -112,6 +131,8 @@ const ControlButton = React.forwardRef(function ControlButton(
 // ─── Fila de canal ─────────────────────────────────────────────────────────────
 
 function ChannelRow({ item, index, active, focused, onPress, onFocus, onBlur, hasTVPreferredFocus }) {
+    const logoSize = isTV ? 28 : 22;
+    const [logoError, setLogoError] = useState(false);
     return (
         <Pressable
             focusable={isTV}
@@ -130,6 +151,17 @@ function ChannelRow({ item, index, active, focused, onPress, onFocus, onBlur, ha
             <View style={[s.numBadge, active && s.numBadgeActive, focused && s.numBadgeFocused]}>
                 <Text style={[s.itemNum, (active || focused) && s.itemNumOn]}>{index + 1}</Text>
             </View>
+            {item.logo && !logoError ? (
+                <Image
+                    source={{
+                        uri: item.logo,
+                        headers: { 'User-Agent': 'BuriTV/1.0' },
+                    }}
+                    style={[s.channelLogo, { width: logoSize, height: logoSize }]}
+                    resizeMode="contain"
+                    onError={() => setLogoError(true)}
+                />
+            ) : null}
             <Text
                 numberOfLines={1}
                 style={[
@@ -151,6 +183,7 @@ function ChannelRow({ item, index, active, focused, onPress, onFocus, onBlur, ha
 
 export default function IPTVPlayer() {
     const [channels, setChannels] = useState([]);
+    const [vlcGlobalOpts, setVlcGlobalOpts] = useState([]);
     const [current, setCurrent] = useState(null);
     const [loading, setLoading] = useState(true);
     const [paused, setPaused] = useState(false);
@@ -159,6 +192,7 @@ export default function IPTVPlayer() {
     const [theater, setTheater] = useState(false);             // TV: oculta lista
     const [controlsVisible, setControlsVisible] = useState(false); // móvil overlay
     const [channelError, setChannelError] = useState(false);
+    const [playerKey, setPlayerKey] = useState(0);          // cambiar para forzar reload del player
 
     // Foco visual TV (solo estética; la navegación la maneja el motor nativo)
     const [listFocused, setListFocused] = useState(-1);
@@ -168,6 +202,7 @@ export default function IPTVPlayer() {
 
     // Alto real de la ventana (TV no resuelve flex/'100%' de forma fiable)
     const { height: winH } = useWindowDimensions();
+    const insets = useSafeAreaInsets();
 
     const hideTimeout = useRef(null);
     const errorTimeout = useRef(null);
@@ -175,6 +210,14 @@ export default function IPTVPlayer() {
     const mobileListRef = useRef(null);
     const playBtnRef = useRef(null);
     const tvHideTimer = useRef(null);
+
+    // ── Stream recovery refs ────────────────────────────────────────────────
+    const lastProgressTime = useRef(null);   // último currentTime reportado por VLC
+    const lastProgressAt = useRef(0);        // timestamp (Date.now) del último avance
+    const stallCheckRef = useRef(null);      // intervalo de detección de stall
+    const playbackStarted = useRef(false);   // true cuando llega el primer onProgress
+    const softRetries = useRef(0);           // intentos suaves antes del reload duro
+    const appStateRef = useRef(AppState.currentState);
 
     // Ref callback: guarda el nodo del botón Play para el puente de foco lista→controles
     const registerPlayBtn = useCallback((node) => {
@@ -192,6 +235,7 @@ export default function IPTVPlayer() {
             clearTimeout(hideTimeout.current);
             clearTimeout(errorTimeout.current);
             clearTimeout(tvHideTimer.current);
+            clearInterval(stallCheckRef.current);
         };
     }, []);
 
@@ -261,9 +305,11 @@ export default function IPTVPlayer() {
         if (!ch) return;
         clearTimeout(errorTimeout.current);
         setChannelError(false);
+        setPlayerKey(0);
         setCurrent(ch);
         setPaused(false);
         if (!isTV) showControls();
+        AsyncStorage.setItem('lastChannelUrl', ch.url).catch(() => {});
     }, [showControls]);
 
     const prevChannel = useCallback(() => {
@@ -300,15 +346,106 @@ export default function IPTVPlayer() {
 
     const toggleTheater = useCallback(() => setTheater(t => !t), []);
 
+    // ── Stream recovery multicapa ──────────────────────────────────────────
+    //
+    // Capa 1: Buffer VLC (network-caching del M3U) → absorbe micro-cortes invisiblemente
+    // Capa 2: Soft recovery (pause/unpause) → intenta destrabar VLC sin destruirlo
+    // Capa 3: Hard recovery (remount player) → reconexión total, último recurso
+    // Capa 4: AppState → al volver de background, refresh automático
+    //
+    const MAX_SOFT_RETRIES = 2;  // intentos suaves antes de ir al reload duro
+
+    const handleProgress = useCallback((e) => {
+        const t = e?.currentTime ?? e?.time;
+        if (t != null && t !== lastProgressTime.current) {
+            lastProgressTime.current = t;
+            lastProgressAt.current = Date.now();
+            if (!playbackStarted.current) {
+                playbackStarted.current = true;
+                softRetries.current = 0;  // stream arrancó bien, resetear contadores
+            }
+        }
+    }, []);
+
+    // Resetear tracking al cambiar canal o hacer reload
+    useEffect(() => {
+        lastProgressTime.current = null;
+        lastProgressAt.current = Date.now();
+        playbackStarted.current = false;
+        softRetries.current = 0;
+    }, [current, playerKey]);
+
+    // Fix audio: al hacer reload, VLC a veces no reinicia el audio.
+    // Un toggle brevísimo de muted fuerza la reinicialización del pipeline de audio.
+    useEffect(() => {
+        if (playerKey === 0) return; // skip en el montaje inicial
+        setMuted(true);
+        const t = setTimeout(() => setMuted(false), 150);
+        return () => clearTimeout(t);
+    }, [playerKey]);
+
+    // Detección de stall + recuperación escalonada
+    useEffect(() => {
+        const STALL_THRESHOLD = 4000;   // 4s sin avance después de haber iniciado
+        const CHECK_INTERVAL = 2000;
+
+        stallCheckRef.current = setInterval(() => {
+            if (paused || channelError || !current) return;
+            if (!playbackStarted.current) return;
+            const elapsed = Date.now() - lastProgressAt.current;
+            if (elapsed < STALL_THRESHOLD) return;
+
+            if (softRetries.current < MAX_SOFT_RETRIES) {
+                // Capa 2: soft recovery — pause/unpause rápido para destrabar VLC
+                softRetries.current += 1;
+                lastProgressAt.current = Date.now();
+                console.log(`[BuriTV] Soft recovery #${softRetries.current}…`);
+                setPaused(true);
+                setTimeout(() => setPaused(false), 300);
+            } else {
+                // Capa 3: hard recovery — destruir y recrear el player
+                console.log('[BuriTV] Hard recovery — remounting player…');
+                lastProgressAt.current = Date.now();
+                playbackStarted.current = false;
+                softRetries.current = 0;
+                setPlayerKey(k => k + 1);
+            }
+        }, CHECK_INTERVAL);
+
+        return () => clearInterval(stallCheckRef.current);
+    }, [paused, channelError, current]);
+
+    // Capa 4: al volver de background → refresh del player
+    useEffect(() => {
+        const sub = AppState.addEventListener('change', (nextState) => {
+            if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
+                // Volvió al frente: forzar reconexión limpia
+                if (current && !channelError) {
+                    console.log('[BuriTV] App resumed — refreshing stream…');
+                    playbackStarted.current = false;
+                    softRetries.current = 0;
+                    setPlayerKey(k => k + 1);
+                }
+            }
+            appStateRef.current = nextState;
+        });
+        return () => sub.remove();
+    }, [current, channelError]);
+
     // ── Data ────────────────────────────────────────────────────────────────
 
     const loadM3U = async () => {
         try {
             const res = await fetch(M3U_URL);
             const text = await res.text();
-            const parsed = parseM3U(text);
+            const { channels: parsed, globalVlcOpts } = parseM3U(text);
             setChannels(parsed);
-            if (parsed.length) setCurrent(parsed[0]);
+            setVlcGlobalOpts(globalVlcOpts);
+
+            // Restaurar último canal visto, o el primero si no hay guardado
+            const savedUrl = await AsyncStorage.getItem('lastChannelUrl');
+            const saved = savedUrl && parsed.find(ch => ch.url === savedUrl);
+            setCurrent(saved || parsed[0] || null);
         } catch (e) {
             console.log('Error loading M3U:', e);
         } finally {
@@ -325,7 +462,7 @@ export default function IPTVPlayer() {
         errorTimeout.current = setTimeout(() => {
             const nextIndex = currentIndex < channels.length - 1 ? currentIndex + 1 : 0;
             selectChannel(channels[nextIndex]);
-        }, 3000);
+        }, 5000);
     };
 
     // ── Móvil: tap para mostrar/ocultar controles ────────────────────────────
@@ -359,6 +496,14 @@ export default function IPTVPlayer() {
         }
     };
 
+    // Auto-restart si VLC se detiene solo (stream cortado sin error)
+    const handleStopped = useCallback(() => {
+        if (!paused && current && !channelError) {
+            console.log('[BuriTV] VLC stopped — restarting…');
+            setPlayerKey(k => k + 1);
+        }
+    }, [paused, current, channelError]);
+
     // ── Loading ───────────────────────────────────────────────────────────────
 
     if (loading) {
@@ -381,11 +526,19 @@ export default function IPTVPlayer() {
         <>
             {current && (
                 <VLCPlayer
+                    key={`${current.url}-${playerKey}`}
                     style={s.player}
                     source={{ uri: current.url }}
                     paused={paused}
                     muted={muted}
+                    onProgress={handleProgress}
                     onError={handlePlayerError}
+                    onStopped={handleStopped}
+                    onEnd={handleStopped}
+                    initOptions={current.vlcOpts
+                        ? current.vlcOpts.map(o => `--${o}`)
+                        : vlcGlobalOpts
+                    }
                 />
             )}
             {channelError && (
@@ -420,7 +573,7 @@ export default function IPTVPlayer() {
 
     if (isTV) {
         const ctrlBar = (
-            <TVFocusGuideView style={[s.tvControlBar, { opacity: tvUiVisible ? 1 : 0 }]} autoFocus>
+            <TVFocusGuideView style={[s.tvControlBar, { opacity: tvUiVisible ? 1 : 0, paddingBottom: 18 + insets.bottom, paddingRight: 26 + insets.right }]} autoFocus>
                 <ControlButton
                     icon="backward-step" size={24}
                     focused={ctrlFocused === 'prev'}
@@ -430,7 +583,6 @@ export default function IPTVPlayer() {
                 />
                 <ControlButton
                     ref={registerPlayBtn}
-                    big
                     icon={paused ? 'play' : 'pause'} size={30}
                     focused={ctrlFocused === 'play'}
                     onFocus={() => setCtrlFocused('play')}
@@ -479,7 +631,7 @@ export default function IPTVPlayer() {
         );
 
         return (
-            <SafeAreaView style={[s.container, s.containerTV]} edges={[]}>
+            <SafeAreaView style={[s.container, s.containerTV]} edges={['top', 'bottom', 'left', 'right']}>
                 <StatusBar hidden />
                 {!theater && (
                     <View style={[s.tvListCol, { height: winH }]}>
@@ -548,7 +700,7 @@ export default function IPTVPlayer() {
                     <FontAwesome6 name="backward-step" size={20} color={C.white} iconStyle="solid" />
                 </Pressable>
                 <Pressable onPress={togglePause} hitSlop={12} style={s.playBtnMobile}>
-                    <FontAwesome6 name={paused ? 'play' : 'pause'} size={26} color={C.white} iconStyle="solid" />
+                    <FontAwesome6 name={paused ? 'play' : 'pause'} size={20} color={'#000'} iconStyle="solid" />
                 </Pressable>
                 <Pressable onPress={nextChannel} hitSlop={12} style={s.iconBtn}>
                     <FontAwesome6 name="forward-step" size={20} color={C.white} iconStyle="solid" />
@@ -578,7 +730,7 @@ export default function IPTVPlayer() {
     return (
         <SafeAreaView
             style={s.container}
-            edges={fullscreen ? [] : ['top', 'left', 'right']}>
+            edges={fullscreen ? [] : ['top', 'bottom', 'left', 'right']}>
             <StatusBar barStyle="light-content" backgroundColor="#000" hidden={fullscreen} />
             {playerBlock}
             {!fullscreen && (
@@ -710,6 +862,7 @@ const s = StyleSheet.create({
     itemNum: { fontSize: 12, color: C.textDim, fontWeight: '700' },
     itemNumOn: { color: '#0b0b0b' },
 
+    channelLogo: { borderRadius: 4, backgroundColor: '#252525' },
     itemName: { flex: 1, color: C.text, fontSize: 14 },
     itemNameTV: { fontSize: 17 },
     activeText: { color: C.white, fontWeight: '600' },
@@ -767,9 +920,9 @@ const s = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.12)',
     },
     playBtnMobile: {
-        width: 60, height: 60, borderRadius: 30,
+        width: 40, height: 40, borderRadius: 20,
         alignItems: 'center', justifyContent: 'center',
-        backgroundColor: 'rgba(10,119,36,0.85)',
+        backgroundColor: '#FFF',
     },
 
     // Botones de control TV
@@ -779,7 +932,6 @@ const s = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.08)',
         borderWidth: 2, borderColor: 'transparent',
     },
-    ctrlBtnBig: { width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(10,119,36,0.5)' },
     ctrlBtnFocused: {
         borderColor: C.white,
         backgroundColor: C.accent,
