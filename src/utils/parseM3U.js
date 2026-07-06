@@ -5,7 +5,12 @@
  *  - #EXTVLCOPT globales (antes del primer #EXTINF)
  *  - #EXTVLCOPT por canal (entre #EXTINF y la URL)
  *  - tvg-logo, group-title
+ *  - Canales web/embed (se reproducen en WebView en vez de VLC):
+ *      · automático si la URL contiene /embed/ o termina en .html
+ *      · explícito con tvg-type="web" en el #EXTINF
  */
+
+const WEB_URL_RE = /\/embed\/|\.html?(\?|$)/i;
 export default function parseM3U(data) {
     const lines = data.split('\n');
     const channels = [];
@@ -13,6 +18,7 @@ export default function parseM3U(data) {
     let currentName = '';
     let currentLogo = '';
     let currentGroup = '';
+    let currentType = '';
     let currentVlcOpts = [];
     let seenFirstExtinf = false;
 
@@ -31,8 +37,10 @@ export default function parseM3U(data) {
             seenFirstExtinf = true;
             const logo = line.match(/tvg-logo="([^"]*)"/i);
             const group = line.match(/group-title="([^"]*)"/i);
+            const type = line.match(/tvg-type="([^"]*)"/i);
             currentLogo = logo ? logo[1] : '';
             currentGroup = group ? group[1] : '';
+            currentType = type ? type[1].toLowerCase() : '';
             const parts = line.split(',');
             currentName = parts[parts.length - 1]?.trim();
         } else if (!line.startsWith('#')) {
@@ -41,11 +49,16 @@ export default function parseM3U(data) {
                 url: line,
                 logo: currentLogo,
                 group: currentGroup,
+                type:
+                    currentType === 'web' || WEB_URL_RE.test(line)
+                        ? 'web'
+                        : 'stream',
                 vlcOpts: currentVlcOpts.length ? currentVlcOpts : null,
             });
             currentName = '';
             currentLogo = '';
             currentGroup = '';
+            currentType = '';
             currentVlcOpts = [];
         }
     }

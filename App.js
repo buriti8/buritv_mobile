@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { useWindowDimensions } from 'react-native';
+import { useWindowDimensions, AppState } from 'react-native';
 import KeepAwake from 'react-native-keep-awake';
 import GoogleCast from 'react-native-google-cast';
+import { HotUpdater } from '@hot-updater/react-native';
 
-import { isTV, TV_ROW_H, TV_HEADER_H } from './src/constants/config';
+import { isTV, TV_ROW_H, TV_HEADER_H, HOT_UPDATER_URL } from './src/constants/config';
+import checkForUpdates from './src/utils/checkForUpdates';
 import useChannels from './src/hooks/useChannels';
 import useStreamRecovery from './src/hooks/useStreamRecovery';
 import useTVControls from './src/hooks/useTVControls';
@@ -12,7 +14,7 @@ import LoadingScreen from './src/screens/LoadingScreen';
 import TVLayout from './src/screens/TVLayout';
 import MobileLayout from './src/screens/MobileLayout';
 
-export default function IPTVPlayer() {
+function IPTVPlayer() {
     const [paused, setPaused] = useState(false);
     const [muted, setMuted] = useState(false);
     const [theater, setTheater] = useState(false);
@@ -58,8 +60,26 @@ export default function IPTVPlayer() {
     // ── Lifecycle ───────────────────────────────────────────────────────────
 
     useEffect(() => {
-        loadM3U();
+        (async () => {
+            await checkForUpdates();
+            loadM3U();
+        })();
     }, [loadM3U]);
+
+    // Al volver del background, vuelve a verificar si hay actualización
+    const appStateUpdates = useRef(AppState.currentState);
+    useEffect(() => {
+        const sub = AppState.addEventListener('change', (nextState) => {
+            if (
+                appStateUpdates.current.match(/inactive|background/) &&
+                nextState === 'active'
+            ) {
+                checkForUpdates();
+            }
+            appStateUpdates.current = nextState;
+        });
+        return () => sub.remove();
+    }, []);
 
     useEffect(() => {
         paused ? KeepAwake.deactivate() : KeepAwake.activate();
@@ -126,26 +146,63 @@ export default function IPTVPlayer() {
 
     // ── Chromecast ──────────────────────────────────────────────────────────
 
+    const currentRef = useRef(null);
+    useEffect(() => {
+        currentRef.current = current;
+    }, [current]);
+
+    const castChannel = useCallback(async (session, ch) => {
+        if (!ch || ch.type === 'web') return; // los embeds web no se pueden castear
+        await session.client.loadMedia({
+            mediaInfo: {
+                contentUrl: ch.url,
+                contentType: ch.url.includes('.m3u8')
+                    ? 'application/x-mpegURL'
+                    : 'video/mp2t',
+                streamType: 'live',
+                metadata: { type: 'generic', title: ch.name },
+            },
+        });
+    }, []);
+
     const startCasting = useCallback(async () => {
+        if (current?.type === 'web') return;
         try {
             const sessionManager = GoogleCast.getSessionManager();
             const session = await sessionManager.getCurrentCastSession();
             if (!session) {
+                // onSessionStarted cargará el canal cuando el usuario conecte
                 await GoogleCast.showCastDialog();
                 return;
             }
-            await session.loadMedia({
-                mediaInfo: {
-                    contentUrl: current.url,
-                    contentType: 'application/x-mpegURL',
-                    streamType: 'LIVE',
-                    metadata: { type: 'generic', title: current.name },
-                },
-            });
+            await castChannel(session, current);
         } catch (error) {
             console.log('Error casting:', error);
         }
-    }, [current]);
+    }, [current, castChannel]);
+
+    // Al conectar un Chromecast (desde el diálogo o el CastButton), carga el canal actual
+    useEffect(() => {
+        const sub = GoogleCast.getSessionManager().onSessionStarted((session) => {
+            castChannel(session, currentRef.current).catch((e) =>
+                console.log('Error casting:', e),
+            );
+        });
+        return () => sub.remove();
+    }, [castChannel]);
+
+    // Si ya hay sesión de cast activa, al cambiar de canal se actualiza el Chromecast
+    useEffect(() => {
+        if (!current) return;
+        (async () => {
+            try {
+                const session = await GoogleCast.getSessionManager().getCurrentCastSession();
+                if (session) await castChannel(session, current);
+            } catch (error) {
+                console.log('Error casting:', error);
+            }
+        })();
+    }, [current, castChannel]);
 
     // ── Render ──────────────────────────────────────────────────────────────
 
@@ -213,3 +270,9 @@ export default function IPTVPlayer() {
         />
     );
 }
+
+export default HotUpdater.wrap({
+    baseURL: HOT_UPDATER_URL,
+    updateStrategy: 'appVersion',
+    updateMode: 'manual',
+})(IPTVPlayer);

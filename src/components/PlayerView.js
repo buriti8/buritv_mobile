@@ -7,6 +7,7 @@ import { isTV } from '../constants/config';
 import { C } from '../constants/colors';
 import { styles } from '../styles/styles';
 import CountdownDots from './CountdownDots';
+import WebPlayerView from './WebPlayerView';
 
 export default function PlayerView({
     current,
@@ -21,7 +22,16 @@ export default function PlayerView({
 }) {
     return (
         <>
-            {current && (
+            {current && current.type === 'web' && (
+                <WebPlayerView
+                    current={current}
+                    playerKey={playerKey}
+                    muted={muted}
+                    onError={onError}
+                />
+            )}
+
+            {current && current.type !== 'web' && (
                 <VLCPlayer
                     key={`${current.url}-${playerKey}`}
                     style={styles.player}
