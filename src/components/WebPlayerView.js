@@ -52,6 +52,35 @@ const AUTOPLAY_JS = `
             });
         }
 
+        // YouTube (watch normal, no embed): la Fullscreen API real requiere
+        // un gesto de usuario genuino, así que no se puede disparar por script.
+        // En su lugar movemos el player a un hijo directo de <body> (para que
+        // quede fuera de cualquier stacking context de la página) y lo
+        // forzamos a cubrir toda la pantalla, ocultando el resto.
+        if (location.hostname.indexOf('youtube.com') !== -1) {
+            var mp = document.getElementById('movie_player');
+            if (mp && !mp.__buriFs) {
+                mp.__buriFs = true;
+                document.body.appendChild(mp);
+                mp.style.cssText =
+                    'position:fixed !important; top:0 !important; left:0 !important;' +
+                    'width:100vw !important; height:100vh !important;' +
+                    'z-index:2147483647 !important; background:#000 !important;';
+                document.documentElement.style.overflow = 'hidden';
+                document.body.style.overflow = 'hidden';
+                Array.prototype.forEach.call(document.body.children, function (el) {
+                    if (el !== mp) el.style.display = 'none';
+                });
+
+                var hideStyle = document.createElement('style');
+                hideStyle.textContent =
+                    '.ytp-mute-button, .ytp-unmute, .ytp-chrome-top,' +
+                    '.ytp-pause-overlay, .ytp-ce-element, .ytp-endscreen-content' +
+                    ' { display: none !important; }';
+                document.head.appendChild(hideStyle);
+            }
+        }
+
         // Sin <video> en el frame principal: si hay un único iframe, entrar
         if (!vids.length && tries === 4) {
             var frames = document.querySelectorAll('iframe[src^="http"]');
@@ -62,7 +91,9 @@ const AUTOPLAY_JS = `
             }
         }
 
-        if (playing || tries > 40) clearInterval(timer);
+        // No se detiene aunque ya esté "playing": algunos reproductores
+        // (p. ej. YouTube) vuelven a mutear el video por su cuenta pasado
+        // un rato, así que seguimos corrigiendo el estado indefinidamente.
     }, 700);
 })();
 true;
