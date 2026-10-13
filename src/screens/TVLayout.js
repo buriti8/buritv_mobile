@@ -1,119 +1,108 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import {
     View,
     Text,
     ScrollView,
+    Pressable,
     StatusBar,
+    BackHandler,
     useWindowDimensions,
     findNodeHandle,
+    TVFocusGuideView,
+    UIManager,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TVFocusGuideView } from 'react-native';
-import { TV_ROW_H, TV_HEADER_H } from '../constants/config';
-import { C } from '../constants/colors';
+import { TV_ROW_H, TV_SECTION_H, TV_HEADER_H } from '../constants/config';
 import { styles } from '../styles/styles';
 import ChannelRow from '../components/ChannelRow';
 import PlayerView from '../components/PlayerView';
 import InfoBar from '../components/InfoBar';
 import TVControlBar from '../components/TVControlBar';
+import ChannelFilters, { EmptyResults } from '../components/ChannelFilters';
+import ZapOSD from '../components/ZapOSD';
+import useChannelFilter, { ALL } from '../hooks/useChannelFilter';
+
+const LIST_PAD_TOP = 10;
 
 export default function TVLayout({
     channels,
     current,
-    vlcGlobalOpts,
     currentIndex,
-    playerKey,
+    sourceIndex,
+    status,
     paused,
     muted,
-    channelError,
     theater,
+    playerProps,
     // TV controls
     ctrlFocused,
     setCtrlFocused,
     playNode,
     registerPlayBtn,
     tvUiVisible,
-    setTvUiVisible,
-    listFocused,
-    setListFocused,
-    tvHideTimer,
-    tvScrollRef,
+    hideTvUi,
+    tvPing,
+    osd,
     // Actions
     selectChannel,
+    selectSource,
     prevChannel,
     nextChannel,
     togglePause,
     toggleMute,
     toggleTheater,
-    tvScrollToIndex,
-    // Recovery
-    handleProgress,
-    handlePlayerError,
-    handleStopped,
+    favorites,
+    toggleFavorite,
 }) {
     const { height: winH } = useWindowDimensions();
     const insets = useSafeAreaInsets();
-
-    // ── Navegación circular: último↓→primero, primero↑→último ───────────
-    const firstRowRef = useRef(null);
-    const lastRowRef = useRef(null);
-    const [firstNodeId, setFirstNodeId] = useState(null);
-    const [lastNodeId, setLastNodeId] = useState(null);
-
+    // En pantalla completa, con los controles ocultos, no se dejan enfocables
+    const controlsHidden = theater && !tvUiVisible;
+    // La barra se desmonta sin disparar blur: olvidar el botón enfocado
     useEffect(() => {
-        const timer = setTimeout(() => {
-            const fId = findNodeHandle(firstRowRef.current);
-            const lId = findNodeHandle(lastRowRef.current);
-            if (fId) setFirstNodeId(fId);
-            if (lId) setLastNodeId(lId);
-        }, 300);
-        return () => clearTimeout(timer);
-    }, [channels.length]);
-
-    const playerColumn = (
-        <View style={styles.tvPlayerCol}>
-            <View style={styles.tvVideoBox}>
-                <PlayerView
-                    current={current}
-                    playerKey={playerKey}
-                    paused={paused}
-                    muted={muted}
-                    vlcGlobalOpts={vlcGlobalOpts}
-                    channelError={channelError}
-                    onProgress={handleProgress}
-                    onError={handlePlayerError}
-                    onStopped={handleStopped}
-                />
-                <View
-                    style={[styles.tvTopGradient, { opacity: tvUiVisible ? 1 : 0 }]}
-                    pointerEvents="box-none"
-                >
-                    <InfoBar channelName={current?.name} />
-                </View>
-                {!theater && playNode && (
-                    <TVFocusGuideView
-                        style={styles.tvFocusBridge}
-                        destinations={[playNode]}
-                    />
-                )}
-            </View>
-            <TVControlBar
-                tvUiVisible={tvUiVisible}
-                insets={insets}
-                ctrlFocused={ctrlFocused}
-                setCtrlFocused={setCtrlFocused}
-                registerPlayBtn={registerPlayBtn}
-                paused={paused}
-                muted={muted}
-                prevChannel={prevChannel}
-                nextChannel={nextChannel}
-                togglePause={togglePause}
-                toggleMute={toggleMute}
-                theater={theater}
-                toggleTheater={toggleTheater}
-            />
-        </View>
+        if (controlsHidden) setCtrlFocused(null);
+    }, [controlsHidden, setCtrlFocused]);
+    const filter = useChannelFilter(channels, favorites);
+    const { filtering, clear } = filter;
+    const [listH, setListH] = useState(0);
+    // ← desde la lista lleva a la pestaña activa (o al buscador)
+    const [filtersNode, setFiltersNode] = useState(null);
+    // ↑ desde el buscador lleva al último canal de la lista
+    const [lastRow, setLastRow] = useState(null);
+    // → desde cualquier canal entra directo a Play (no al botón más cercano)
+    const [playId, setPlayId] = useState(null);
+    useEffect(() => {
+        const t = setTimeout(() => setPlayId(playNode ? findNodeHandle(playNode) : null), 200);
+        return () => clearTimeout(t);
+    }, [playNode]);
+    const toggleRowFavorite = useCallback(ch => toggleFavorite(ch?.id), [toggleFavorite]);
+    const toggleCurrentFavorite = useCallback(
+        () => toggleFavorite(current?.id),
+        [toggleFavorite, current?.id],
     );
+
+    // Atrás desde los controles del reproductor → vuelve a la lista, al canal
+    // que está sonando (se registra después: tiene prioridad sobre el filtro)
+    const focusListRef = useRef(null);
+    const inControls = !theater && ctrlFocused != null;
+    useEffect(() => {
+        if (!inControls) return;
+        const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+            focusListRef.current?.();
+            return true;
+        });
+        return () => sub.remove();
+    }, [inControls]);
+
+    // Atrás con un filtro activo → primero vuelve a mostrar todos los canales
+    useEffect(() => {
+        if (theater || !filtering) return;
+        const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+            clear();
+            return true;
+        });
+        return () => sub.remove();
+    }, [theater, filtering, clear]);
 
     return (
         <SafeAreaView
@@ -125,68 +114,309 @@ export default function TVLayout({
             {!theater && (
                 <View style={[styles.tvListCol, { height: winH }]}>
                     <View style={[styles.tvBrandBar, { height: TV_HEADER_H }]}>
-                        <Text style={styles.tvBrand}>
-                            Buri<Text style={{ color: C.accentSoft }}>TV</Text>
+                        <Text style={styles.brand}>
+                            Buri<Text style={styles.brandAccent}>TV</Text>
                         </Text>
-                        <Text style={styles.tvChannelCount}>
-                            {channels.length} canales
-                        </Text>
+                        <Text style={styles.brandCount}>{channels.length} canales</Text>
+                        {/* ↑ desde el buscador: el foco entra aquí y salta al último
+                            canal (la lista es un círculo: canales → filtros → canales) */}
+                        {lastRow && filter.items.length > 0 && (
+                            <TVFocusGuideView style={styles.tvTopBridge} destinations={[lastRow]} />
+                        )}
                     </View>
-                    <TVFocusGuideView
-                        style={{ height: winH - TV_HEADER_H }}
-                        autoFocus
-                    >
-                        <ScrollView
-                            ref={tvScrollRef}
-                            style={{ height: winH - TV_HEADER_H }}
-                            contentContainerStyle={styles.listContentTV}
-                            showsVerticalScrollIndicator={false}
-                        >
-                            {channels.map((item, index) => {
-                                const isFirst = index === 0;
-                                const isLast = index === channels.length - 1;
-                                return (
-                                    <ChannelRow
-                                        key={index}
-                                        ref={
-                                            isFirst
-                                                ? firstRowRef
-                                                : isLast
-                                                  ? lastRowRef
-                                                  : undefined
-                                        }
-                                        item={item}
-                                        index={index}
-                                        active={item.url === current?.url}
-                                        focused={listFocused === index}
-                                        hasTVPreferredFocus={
-                                            currentIndex >= 0
-                                                ? index === currentIndex
-                                                : index === 0
-                                        }
-                                        nextFocusUp={isFirst ? lastNodeId : undefined}
-                                        nextFocusDown={isLast ? firstNodeId : undefined}
-                                        onFocus={() => {
-                                            setListFocused(index);
-                                            tvScrollToIndex(index);
-                                            clearTimeout(tvHideTimer.current);
-                                            setTvUiVisible(false);
-                                        }}
-                                        onBlur={() =>
-                                            setListFocused((f) =>
-                                                f === index ? -1 : f,
-                                            )
-                                        }
-                                        onPress={() => selectChannel(item)}
-                                    />
-                                );
-                            })}
-                        </ScrollView>
-                    </TVFocusGuideView>
+                    <ChannelFilters
+                        filter={filter}
+                        totalCount={channels.length}
+                        onLeftTarget={setFiltersNode}
+                    />
+                    <View style={styles.list} onLayout={e => setListH(e.nativeEvent.layout.height)}>
+                        {!filter.ready ? null : filter.items.length ? (
+                            listH > 0 && (
+                                <TVChannelList
+                                    items={filter.items}
+                                    filterKey={`${filter.category}|${filter.query.trim()}`}
+                                    showSections={filter.category === ALL && !filter.query.trim()}
+                                    currentId={current?.id}
+                                    favorites={favorites}
+                                    initialIndex={currentIndex}
+                                    height={listH}
+                                    onSelect={selectChannel}
+                                    onToggleFavorite={toggleRowFavorite}
+                                    onRowFocus={hideTvUi}
+                                    leftTargetId={filtersNode}
+                                    rightTargetId={playId}
+                                    focusRef={focusListRef}
+                                    onLastRow={setLastRow}
+                                />
+                            )
+                        ) : (
+                            <EmptyResults query={filter.query.trim()} onClear={clear} />
+                        )}
+                    </View>
                 </View>
             )}
 
-            {playerColumn}
+            <View style={styles.tvPlayerCol}>
+                <View style={styles.tvVideoBox}>
+                    <PlayerView {...playerProps} />
+                    {/* Con los controles a la vista se oscurece el video para que
+                        los botones del centro se lean sobre cualquier imagen */}
+                    <View
+                        style={[styles.tvDim, { opacity: tvUiVisible && !osd ? 1 : 0 }]}
+                        pointerEvents="none"
+                    />
+                    <View
+                        style={[
+                            styles.tvTopScrim,
+                            {
+                                opacity: !osd && (tvUiVisible || status !== 'playing') ? 1 : 0,
+                            },
+                        ]}
+                        pointerEvents="none"
+                    >
+                        <InfoBar
+                            channel={current}
+                            sourceIndex={sourceIndex}
+                            channelNumber={currentIndex + 1}
+                            live={status === 'playing'}
+                        />
+                    </View>
+                    <ZapOSD osd={osd} channels={channels} />
+                    {/* Pantalla completa sin controles: este receptor tiene el foco,
+                        así ↑/↓ y ←/→ llegan al control remoto (canal / opción) y OK
+                        muestra los controles */}
+                    {controlsHidden && (
+                        <Pressable
+                            focusable
+                            hasTVPreferredFocus
+                            style={styles.tvKeyCatcher}
+                            onPress={tvPing}
+                        />
+                    )}
+                    {!theater && playNode && (
+                        <TVFocusGuideView style={styles.tvFocusBridge} destinations={[playNode]} />
+                    )}
+                </View>
+                {!controlsHidden && (
+                    <TVControlBar
+                        preferPlay={theater}
+                        tvUiVisible={tvUiVisible}
+                        insets={insets}
+                        ctrlFocused={ctrlFocused}
+                        setCtrlFocused={setCtrlFocused}
+                        registerPlayBtn={registerPlayBtn}
+                        paused={paused}
+                        muted={muted}
+                        channel={current}
+                        sourceIndex={sourceIndex}
+                        status={status}
+                        selectSource={selectSource}
+                        prevChannel={prevChannel}
+                        nextChannel={nextChannel}
+                        togglePause={togglePause}
+                        toggleMute={toggleMute}
+                        theater={theater}
+                        toggleTheater={toggleTheater}
+                        favorite={!!current && favorites.has(current.id)}
+                        toggleFavorite={toggleCurrentFavorite}
+                    />
+                )}
+            </View>
         </SafeAreaView>
     );
 }
+
+/**
+ * Lista de canales para TV (ya filtrada).
+ *  - Filas memoizadas: mover el foco solo re-renderiza las filas afectadas.
+ *  - Navegación en círculo: ↓ en el último canal vuelve al primero; ↑ en
+ *    el primero sube a las pestañas de categoría (luego al buscador y de
+ *    ahí al último canal). ← también lleva a las pestañas / buscador.
+ *  - Mantiene la fila enfocada centrada; si se mantiene apretada la flecha
+ *    el scroll deja de animarse para no acumular animaciones.
+ */
+const TVChannelList = React.memo(function TVChannelList({
+    items,
+    filterKey,
+    showSections,
+    currentId,
+    favorites,
+    initialIndex,
+    height,
+    onSelect,
+    onToggleFavorite,
+    onRowFocus,
+    leftTargetId,
+    rightTargetId,
+    onLastRow,
+    focusRef,
+}) {
+    const scrollRef = useRef(null);
+    const firstRowRef = useRef(null);
+    const lastFocusAt = useRef(0);
+    const lastRowRef = useRef(null);
+    const activeRowRef = useRef(null);
+
+    // Para "Atrás" desde el reproductor: enfocar el canal que suena (o el
+    // primero, si el filtro actual no lo incluye)
+    useEffect(() => {
+        if (!focusRef) return;
+        focusRef.current = () => {
+            const row = activeRowRef.current ?? firstRowRef.current;
+            const tag = row && findNodeHandle(row);
+            // El ref del Pressable no trae requestTVFocus(): se pide directo
+            // al view manager (ReactViewManager atiende "requestTVFocus")
+            if (tag != null) UIManager.dispatchViewManagerCommand(tag, 'requestTVFocus', []);
+        };
+        return () => {
+            focusRef.current = null;
+        };
+    }, [focusRef]);
+    const [firstId, setFirstId] = useState(null);
+    // Foco inicial: solo al montar (no robar el foco al cambiar de canal)
+    const [preferredIndex] = useState(() => Math.max(0, initialIndex));
+    // hasTVPreferredFocus solo vale al abrir la lista. Si se dejara puesto,
+    // al cambiar de categoría la fila del canal en reproducción se vuelve a
+    // montar y le roba el foco a las pestañas.
+    const [initialFocusDone, setInitialFocusDone] = useState(false);
+    useEffect(() => {
+        const t = setTimeout(() => setInitialFocusDone(true), 800);
+        return () => clearTimeout(t);
+    }, []);
+
+    const { rows, offsets } = useMemo(() => {
+        const out = [];
+        const ys = {};
+        let y = LIST_PAD_TOP;
+        let lastGroup;
+        items.forEach(({ ch, index }) => {
+            if (showSections && ch.group && ch.group !== lastGroup) {
+                out.push({ type: 'header', title: ch.group, key: `h-${index}` });
+                y += TV_SECTION_H;
+                lastGroup = ch.group;
+            }
+            out.push({ type: 'channel', ch, index, key: ch.id });
+            ys[index] = y;
+            y += TV_ROW_H;
+        });
+        return { rows: out, offsets: ys };
+    }, [items, showSections]);
+
+    const firstIndex = items[0]?.index;
+    const lastIndex = items[items.length - 1]?.index;
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setFirstId(findNodeHandle(firstRowRef.current));
+            onLastRow?.(lastRowRef.current);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [firstIndex, lastIndex, onLastRow]);
+
+    // La lista se desmonta (pantalla completa): olvidar el último canal
+    useEffect(() => () => onLastRow?.(null), [onLastRow]);
+
+    // Al cambiar el filtro (categoría o búsqueda), volver arriba. No con
+    // cualquier cambio de items: también cambian al cargar los favoritos o
+    // al llegar la lista actualizada, y eso mandaba la lista al inicio.
+    const mounted = useRef(false);
+    useEffect(() => {
+        if (mounted.current) scrollRef.current?.scrollTo({ y: 0, animated: false });
+        mounted.current = true;
+    }, [filterKey]);
+
+    const scrollToIndex = useCallback(
+        index => {
+            const y = offsets[index];
+            if (y == null) return;
+            const now = Date.now();
+            const rapid = now - lastFocusAt.current < 180;
+            lastFocusAt.current = now;
+            scrollRef.current?.scrollTo({
+                y: Math.max(0, y - height / 2 + TV_ROW_H / 2),
+                animated: !rapid,
+            });
+        },
+        [offsets, height],
+    );
+
+    // Al abrir: dejar centrado el canal que suena. Se hace cuando el
+    // contenido ya está medido (antes, el scroll se perdía si la lista aún
+    // no tenía alto y quedaba arriba del todo).
+    const initialScrollDone = useRef(false);
+    const handleContentSize = useCallback(
+        (w, h) => {
+            if (initialScrollDone.current || !h) return;
+            initialScrollDone.current = true;
+            const y = offsets[preferredIndex];
+            if (y == null) return;
+            scrollRef.current?.scrollTo({
+                y: Math.max(0, Math.min(y - height / 2 + TV_ROW_H / 2, h - height)),
+                animated: false,
+            });
+        },
+        [offsets, preferredIndex, height],
+    );
+
+    const handleFocusIndex = useCallback(
+        index => {
+            scrollToIndex(index);
+            onRowFocus();
+        },
+        [scrollToIndex, onRowFocus],
+    );
+
+    return (
+        <TVFocusGuideView style={{ height }} autoFocus>
+            <ScrollView
+                ref={scrollRef}
+                style={{ height }}
+                contentContainerStyle={styles.listContentTV}
+                showsVerticalScrollIndicator={false}
+                onContentSizeChange={handleContentSize}
+            >
+                {rows.map(row =>
+                    row.type === 'header' ? (
+                        <Text key={row.key} style={styles.sectionTitleTV}>
+                            {row.title}
+                        </Text>
+                    ) : (
+                        <ChannelRow
+                            key={row.key}
+                            ref={
+                                row.index === firstIndex ||
+                                row.index === lastIndex ||
+                                row.ch.id === currentId
+                                    ? node => {
+                                          // Con un solo canal es a la vez el primero y el último
+                                          if (row.index === firstIndex) firstRowRef.current = node;
+                                          if (row.index === lastIndex) lastRowRef.current = node;
+                                          if (row.ch.id === currentId) activeRowRef.current = node;
+                                          else if (activeRowRef.current === node)
+                                              activeRowRef.current = null;
+                                      }
+                                    : undefined
+                            }
+                            item={row.ch}
+                            index={row.index}
+                            active={row.ch.id === currentId}
+                            favorite={favorites.has(row.ch.id)}
+                            hasTVPreferredFocus={!initialFocusDone && row.index === preferredIndex}
+                            nextFocusUp={
+                                row.index === firstIndex ? leftTargetId ?? undefined : undefined
+                            }
+                            nextFocusDown={
+                                row.index === lastIndex ? firstId ?? undefined : undefined
+                            }
+                            nextFocusLeft={leftTargetId ?? undefined}
+                            nextFocusRight={rightTargetId ?? undefined}
+                            onFocusIndex={handleFocusIndex}
+                            onPress={onSelect}
+                            onLongPress={onToggleFavorite}
+                        />
+                    ),
+                )}
+            </ScrollView>
+        </TVFocusGuideView>
+    );
+});

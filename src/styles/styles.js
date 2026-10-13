@@ -1,9 +1,22 @@
 import { StyleSheet } from 'react-native';
 import { C } from '../constants/colors';
-import { TV_ROW_H, MOBILE_ROW_H } from '../constants/config';
+import {
+    TV_ROW_H,
+    TV_SECTION_H,
+    MOBILE_ROW_H,
+    MOBILE_SECTION_H,
+    FONT_DISPLAY,
+} from '../constants/config';
+
+// Sistema visual "estadio de noche"
+//  - Tipografía: Roboto Condensed (FONT_DISPLAY) para nombres, números y
+//    títulos, como los marcadores de TV; Roboto normal para lo secundario.
+//  - Escala TV (dp): 13 · 15 · 17 · 20 · 24 · 36 · 54   Móvil: 12 · 13 · 15 · 17 · 22
+//  - Radios por jerarquía: 4–6 placas y segmentos, 8 filas y buscador,
+//    círculo solo para los botones de reproducción.
+//  - Foco en TV: blanco tiza con texto oscuro. Verde = lo que está sonando.
 
 export const styles = StyleSheet.create({
-
     // ── Container ───────────────────────────────────────────────────────────
 
     container: {
@@ -12,6 +25,63 @@ export const styles = StyleSheet.create({
     },
     containerTV: {
         flexDirection: 'row',
+    },
+    appRoot: {
+        flex: 1,
+        backgroundColor: C.bg,
+    },
+
+    // ── Avisos breves (Toast) ───────────────────────────────────────────────
+
+    toastWrap: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 48,
+        alignItems: 'center',
+    },
+    // En TV, por encima de la fila de botones del reproductor
+    toastWrapTV: {
+        bottom: 150,
+    },
+    toast: {
+        paddingHorizontal: 18,
+        paddingVertical: 11,
+        borderRadius: 8,
+        backgroundColor: C.surfaceHi,
+        borderWidth: 1,
+        borderColor: C.border,
+    },
+    toastTV: {
+        paddingHorizontal: 26,
+        paddingVertical: 14,
+    },
+    toastText: {
+        color: C.text,
+        fontSize: 14,
+    },
+    toastTextTV: {
+        fontSize: 18,
+    },
+    pipRoot: {
+        flex: 1,
+        backgroundColor: '#000',
+    },
+
+    // ── Marca ───────────────────────────────────────────────────────────────
+
+    brand: {
+        color: C.chalk,
+        fontFamily: FONT_DISPLAY,
+        fontSize: 26,
+        fontWeight: '700',
+    },
+    brandAccent: {
+        color: C.accentSoft,
+    },
+    brandCount: {
+        color: C.textMute,
+        fontSize: 13,
     },
 
     // ── Loading ─────────────────────────────────────────────────────────────
@@ -22,14 +92,31 @@ export const styles = StyleSheet.create({
         alignItems: 'center',
         backgroundColor: C.bg,
     },
-    logoMark: {
-        paddingHorizontal: 4,
-    },
     logoText: {
-        color: C.white,
-        fontSize: 34,
-        fontWeight: '800',
-        letterSpacing: 0.5,
+        color: C.chalk,
+        fontFamily: FONT_DISPLAY,
+        fontSize: 48,
+        fontWeight: '700',
+    },
+    loaderSpinner: {
+        marginTop: 22,
+    },
+    loadError: {
+        alignItems: 'center',
+        gap: 12,
+        marginTop: 28,
+        paddingHorizontal: 32,
+    },
+    loadErrorText: {
+        color: C.text,
+        fontSize: 17,
+        fontWeight: '700',
+        textAlign: 'center',
+    },
+    loadErrorSub: {
+        color: C.textDim,
+        fontSize: 14,
+        marginBottom: 6,
     },
     loadingText: {
         color: C.textDim,
@@ -40,29 +127,15 @@ export const styles = StyleSheet.create({
     // ════════════ TV ════════════════════════════════════════════════════════
 
     tvListCol: {
-        width: 340,
+        width: 360,
         backgroundColor: C.panel,
-        borderRightWidth: 1,
-        borderRightColor: C.border,
     },
     tvBrandBar: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'baseline',
         justifyContent: 'space-between',
-        paddingHorizontal: 18,
-        borderBottomWidth: 1,
-        borderBottomColor: C.border,
-    },
-    tvBrand: {
-        color: C.white,
-        fontSize: 22,
-        fontWeight: '800',
-        letterSpacing: 0.3,
-    },
-    tvChannelCount: {
-        color: C.textMute,
-        fontSize: 12,
-        fontWeight: '600',
+        paddingHorizontal: 22,
+        paddingTop: 26,
     },
     tvPlayerCol: {
         flex: 1,
@@ -72,35 +145,155 @@ export const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#000',
     },
-    tvTopGradient: {
+    // Velo sobre el video mientras se ven los controles
+    tvDim: {
         position: 'absolute',
         top: 0,
         left: 0,
         right: 0,
-        paddingBottom: 28,
-        backgroundColor: 'rgba(0,0,0,0.45)',
+        bottom: 0,
+        backgroundColor: C.scrimSoft,
     },
+    tvTopScrim: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        paddingTop: 26,
+        paddingHorizontal: 32,
+    },
+    // Franja del logo: ↑ desde el buscador salta al último canal
+    tvTopBridge: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+    },
+    // → desde la lista entra por aquí y salta a Play. Cubre solo la parte de
+    // arriba del video, para no tapar los controles del centro ni los de abajo.
     tvFocusBridge: {
         position: 'absolute',
         top: 0,
         left: 0,
         right: 0,
-        bottom: 110,
+        bottom: '62%',
     },
-    tvControlBar: {
+    tvKeyCatcher: {
         position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+    },
+
+    // ── Banner de cambio de canal (TV) ──────────────────────────────────────
+
+    osd: {
+        position: 'absolute',
+        top: 26,
+        left: 32,
+        right: 32,
+    },
+
+    // ── Controles sobre el video (TV) ───────────────────────────────────────
+
+    tvControls: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+    },
+    tvTransport: {
+        position: 'absolute',
+        top: 0,
         left: 0,
         right: 0,
         bottom: 0,
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 26,
-        paddingVertical: 18,
-        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'center',
+        gap: 26,
+    },
+    tvBottomRow: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        paddingLeft: 32,
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        justifyContent: 'space-between',
+    },
+    tvUtilRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
         gap: 14,
     },
-    ctrlGap: {
-        flex: 1,
+
+    // ── Opciones del canal (TV): "Opción [1][2][3][4]" ─────────────────────
+
+    tvOptGroup: {
+        gap: 8,
+    },
+    tvOptLabel: {
+        color: C.chalk,
+        fontSize: 15,
+        textShadowColor: 'rgba(0,0,0,0.8)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 4,
+    },
+    tvOptSegments: {
+        flexDirection: 'row',
+        gap: 6,
+    },
+    tvSeg: {
+        width: 52,
+        height: 52,
+        borderRadius: 6,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: C.onVideo,
+        borderWidth: 2,
+        borderColor: C.onVideoLine,
+    },
+    tvSegCurrent: {
+        backgroundColor: C.container,
+        borderColor: C.accent,
+    },
+    tvSegFocused: {
+        backgroundColor: C.focusFill,
+        borderColor: C.focus,
+        transform: [{ scale: 1.1 }],
+    },
+    tvSegText: {
+        color: C.textDim,
+        fontFamily: FONT_DISPLAY,
+        fontSize: 24,
+        fontWeight: '700',
+        includeFontPadding: false,
+    },
+    tvSegTextCurrent: {
+        color: C.onContainer,
+    },
+    tvSegTextFocused: {
+        color: C.onFocus,
+    },
+    tvSegSignal: {
+        position: 'absolute',
+        top: 6,
+        right: 6,
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+        backgroundColor: C.textDim,
+    },
+    signalOk: {
+        backgroundColor: C.success,
+    },
+    signalBad: {
+        backgroundColor: C.warning,
     },
 
     // ── Lista ───────────────────────────────────────────────────────────────
@@ -109,107 +302,152 @@ export const styles = StyleSheet.create({
         flex: 1,
     },
     listContentTV: {
-        paddingVertical: 8,
+        paddingTop: 10,
+        paddingHorizontal: 14,
+        paddingBottom: 40,
+    },
+    listContent: {
         paddingHorizontal: 8,
         paddingBottom: 24,
     },
-    listContent: {
-        paddingVertical: 6,
-        paddingHorizontal: 8,
-        paddingBottom: 24,
+    sectionTitle: {
+        height: MOBILE_SECTION_H,
+        color: C.textDim,
+        fontFamily: FONT_DISPLAY,
+        fontSize: 15,
+        fontWeight: '700',
+        paddingHorizontal: 10,
+        paddingTop: 16,
+        paddingBottom: 6,
+    },
+    sectionTitleTV: {
+        height: TV_SECTION_H,
+        color: C.textDim,
+        fontFamily: FONT_DISPLAY,
+        fontSize: 17,
+        fontWeight: '700',
+        paddingHorizontal: 10,
+        paddingTop: 14,
     },
 
     // ── Fila de canal ───────────────────────────────────────────────────────
+    // Filas planas, sin tarjeta: el número va en su columna, el que suena
+    // lleva el número en el bloque verde de la placa y el foco es tiza.
 
     item: {
-        height: MOBILE_ROW_H - 4,
+        height: MOBILE_ROW_H - 2,
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 10,
-        backgroundColor: C.item,
-        borderRadius: 10,
-        marginBottom: 4,
-        borderWidth: 1.5,
+        paddingHorizontal: 8,
+        borderRadius: 8,
+        marginBottom: 2,
+        gap: 12,
+        borderWidth: 2,
         borderColor: 'transparent',
-        gap: 10,
     },
     itemTV: {
-        height: TV_ROW_H - 6,
-        paddingHorizontal: 12,
-        borderRadius: 8,
-        marginBottom: 6,
+        height: TV_ROW_H - 2,
     },
     activeItem: {
-        borderColor: C.accent,
-        backgroundColor: C.itemActive,
+        backgroundColor: C.container,
     },
     focusedItem: {
-        borderColor: C.white,
-        backgroundColor: '#3a3a3a',
+        backgroundColor: C.focusFill,
         transform: [{ scale: 1.03 }],
+        borderColor: C.focus,
     },
-    pressedItem: {
-        backgroundColor: '#2a2a2a',
-    },
-
-    // ── Badge de número ─────────────────────────────────────────────────────
-
-    numBadge: {
-        minWidth: 26,
-        height: 22,
-        paddingHorizontal: 5,
-        borderRadius: 5,
-        backgroundColor: '#303030',
+    itemNumBox: {
+        minWidth: 30,
+        height: 26,
+        paddingHorizontal: 4,
+        borderRadius: 4,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    numBadgeActive: {
+    itemNumBoxActive: {
         backgroundColor: C.accent,
     },
-    numBadgeFocused: {
-        backgroundColor: C.white,
-    },
     itemNum: {
-        fontSize: 12,
-        color: C.textDim,
+        fontFamily: FONT_DISPLAY,
+        fontSize: 16,
+        fontWeight: '700',
+        color: C.textMute,
+        fontVariant: ['tabular-nums'],
+        includeFontPadding: false,
+    },
+    itemNumTV: {
+        fontSize: 18,
+    },
+    itemNumActive: {
+        color: C.white,
+    },
+    itemNumFocused: {
+        color: C.onFocus,
+    },
+    logoTile: {
+        width: 40,
+        height: 40,
+        borderRadius: 6,
+        backgroundColor: C.logoTile,
+        padding: 5,
+        // Borde apenas visible: separa el logo de la fila enfocada (blanca)
+        borderWidth: 1,
+        borderColor: C.logoTileLine,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    logoTileTV: {
+        width: 40,
+        height: 40,
+    },
+    logoImg: {
+        width: '100%',
+        height: '100%',
+    },
+    logoFallback: {
+        color: C.text,
+        fontFamily: FONT_DISPLAY,
+        fontSize: 14,
         fontWeight: '700',
     },
-    itemNumOn: {
-        color: '#0b0b0b',
-    },
-
-    // ── Logo y nombre de canal ──────────────────────────────────────────────
-
-    channelLogo: {
-        borderRadius: 4,
-        backgroundColor: '#252525',
+    itemBody: {
+        flex: 1,
+        justifyContent: 'center',
     },
     itemName: {
-        flex: 1,
         color: C.text,
-        fontSize: 14,
+        fontFamily: FONT_DISPLAY,
+        fontSize: 17,
+        fontWeight: '700',
     },
     itemNameTV: {
-        fontSize: 17,
+        fontSize: 20,
     },
-    activeText: {
-        color: C.white,
-        fontWeight: '600',
+    itemNameOn: {
+        color: C.text,
     },
-    focusedText: {
-        color: C.white,
-        fontWeight: '700',
+    itemNameFocused: {
+        color: C.onFocus,
+    },
+    itemSub: {
+        color: C.textMute,
+        fontSize: 12,
+        marginTop: 1,
+    },
+    itemSubActive: {
+        color: C.onContainer,
+    },
+    itemSubFocused: {
+        color: C.textDim,
     },
 
     // ── Player móvil ────────────────────────────────────────────────────────
 
     mobilePlayer: {
-        height: 230,
         backgroundColor: '#000',
     },
     mobilePlayerFs: {
         flex: 1,
-        height: undefined,
     },
     player: {
         width: '100%',
@@ -223,28 +461,267 @@ export const styles = StyleSheet.create({
         right: 0,
     },
 
-    // ── Lista móvil ─────────────────────────────────────────────────────────
+    // ── Lo que suena (móvil, bajo el video) ─────────────────────────────────
 
     mobileListWrap: {
         flex: 1,
-        backgroundColor: C.panel,
+        backgroundColor: C.bg,
     },
-    mobileListHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+    nowSection: {
         paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderBottomWidth: 1,
+        paddingTop: 14,
+        paddingBottom: 14,
+        gap: 14,
+        borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: C.border,
     },
-    mobileBrand: {
+    nowRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    nowNum: {
+        minWidth: 40,
+        height: 40,
+        paddingHorizontal: 6,
+        borderRadius: 5,
+        backgroundColor: C.accent,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    nowNumText: {
         color: C.white,
-        fontSize: 18,
-        fontWeight: '800',
+        fontFamily: FONT_DISPLAY,
+        fontSize: 22,
+        fontWeight: '700',
+        fontVariant: ['tabular-nums'],
+        includeFontPadding: false,
+    },
+    nowTitle: {
+        color: C.chalk,
+        fontFamily: FONT_DISPLAY,
+        fontSize: 22,
+        fontWeight: '700',
+    },
+    nowStatus: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: 1,
+    },
+    nowStatusDot: {
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+        backgroundColor: C.textMute,
+    },
+    nowStatusDotLive: {
+        backgroundColor: C.live,
+    },
+    nowSub: {
+        color: C.textDim,
+        fontSize: 13,
+    },
+    nowSubLive: {
+        color: C.text,
+    },
+    favBtn: {
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: C.surface,
+    },
+    favBtnOn: {
+        backgroundColor: 'rgba(240,180,60,0.14)',
     },
 
-    // ── Overlay / controls ──────────────────────────────────────────────────
+    // ── Selector de opción (móvil): "Opción [1][2][3]" ─────────────────────
+
+    segGroup: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    segLabel: {
+        color: C.textDim,
+        fontSize: 13,
+    },
+    segLabelOver: {
+        color: C.chalk,
+    },
+    segTrack: {
+        flexDirection: 'row',
+        gap: 4,
+        padding: 3,
+        borderRadius: 7,
+        backgroundColor: C.surface,
+    },
+    segTrackOver: {
+        backgroundColor: C.onVideo,
+    },
+    seg: {
+        minWidth: 38,
+        height: 32,
+        paddingHorizontal: 8,
+        borderRadius: 5,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    segOn: {
+        backgroundColor: C.container,
+    },
+    segText: {
+        color: C.textDim,
+        fontFamily: FONT_DISPLAY,
+        fontSize: 17,
+        fontWeight: '700',
+        includeFontPadding: false,
+    },
+    segTextOn: {
+        color: C.onContainer,
+    },
+    segSignal: {
+        position: 'absolute',
+        top: 4,
+        right: 4,
+        width: 5,
+        height: 5,
+        borderRadius: 3,
+        backgroundColor: C.textDim,
+    },
+
+    // ── Buscador y categorías ───────────────────────────────────────────────
+
+    filters: {
+        paddingHorizontal: 12,
+        paddingTop: 12,
+        paddingBottom: 4,
+        gap: 10,
+    },
+    filtersTV: {
+        paddingHorizontal: 14,
+        paddingTop: 18,
+        paddingBottom: 6,
+        gap: 12,
+    },
+    search: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        height: 44,
+        paddingHorizontal: 14,
+        borderRadius: 8,
+        backgroundColor: C.surface,
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    searchTV: {
+        height: 48,
+    },
+    searchFocused: {
+        borderColor: C.focus,
+        backgroundColor: C.surfaceHi,
+    },
+    searchInput: {
+        flex: 1,
+        color: C.text,
+        fontSize: 15,
+        paddingVertical: 0,
+    },
+    searchInputTV: {
+        fontSize: 17,
+    },
+    searchClear: {
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        backgroundColor: C.textDim,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    tabsRow: {
+        gap: 6,
+        paddingRight: 8,
+    },
+    tab: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 7,
+        height: 36,
+        paddingHorizontal: 14,
+        borderRadius: 6,
+        backgroundColor: C.surface,
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    tabTV: {
+        height: 42,
+        paddingHorizontal: 16,
+    },
+    tabOn: {
+        backgroundColor: C.container,
+    },
+    tabFocused: {
+        backgroundColor: C.focusFill,
+        transform: [{ scale: 1.06 }],
+        borderColor: C.focus,
+    },
+    tabText: {
+        color: C.textDim,
+        fontFamily: FONT_DISPLAY,
+        fontSize: 15,
+        fontWeight: '700',
+    },
+    tabTextTV: {
+        fontSize: 17,
+    },
+    tabTextOn: {
+        color: C.onContainer,
+    },
+    tabTextFocused: {
+        color: C.onFocus,
+    },
+    tabCount: {
+        color: C.textMute,
+        fontSize: 12,
+        fontVariant: ['tabular-nums'],
+    },
+    tabCountOn: {
+        color: C.onContainer,
+    },
+    empty: {
+        alignItems: 'center',
+        paddingVertical: 40,
+        paddingHorizontal: 20,
+        gap: 12,
+    },
+    emptyTitle: {
+        color: C.textDim,
+        fontSize: 15,
+        textAlign: 'center',
+    },
+    emptyBtn: {
+        paddingHorizontal: 18,
+        paddingVertical: 10,
+        borderRadius: 6,
+        backgroundColor: C.container,
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    emptyBtnFocused: {
+        backgroundColor: C.focusFill,
+        transform: [{ scale: 1.06 }],
+        borderColor: C.focus,
+    },
+    emptyBtnText: {
+        color: C.onContainer,
+        fontSize: 14,
+        fontWeight: '700',
+    },
+
+    // ── Overlay / controles (móvil) ─────────────────────────────────────────
 
     overlay: {
         position: 'absolute',
@@ -253,143 +730,209 @@ export const styles = StyleSheet.create({
         left: 0,
         right: 0,
         justifyContent: 'space-between',
+        backgroundColor: C.scrimSoft,
     },
     topBar: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 10,
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        backgroundColor: 'rgba(0,0,0,0.55)',
+        paddingHorizontal: 12,
+        paddingTop: 10,
     },
     topBarFs: {
-        paddingTop: 14,
+        paddingTop: 16,
+    },
+    spacerShrink: {
+        flex: 1,
+        minWidth: 0,
+    },
+    castBtn: {
+        width: 24,
+        height: 24,
+        tintColor: C.chalk,
     },
     centerControls: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 28,
+        gap: 34,
     },
     bottomBar: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'space-between',
         gap: 10,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        backgroundColor: 'rgba(0,0,0,0.55)',
+        paddingHorizontal: 12,
+        paddingBottom: 10,
+    },
+    bottomUtil: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
     },
     spacer: {
         flex: 1,
     },
-
-    // ── Badges y títulos ────────────────────────────────────────────────────
-
-    liveBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 5,
-        backgroundColor: C.accent,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 4,
-    },
-    liveDot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: '#fff',
-    },
-    liveText: {
-        color: '#fff',
-        fontSize: 10,
-        fontWeight: '800',
-        letterSpacing: 0.6,
-    },
-    channelTitle: {
-        flex: 1,
-        color: C.white,
-        fontSize: 14,
-        fontWeight: '600',
-    },
-    channelTitleTV: {
-        fontSize: 20,
-        flex: 0,
-        maxWidth: '70%',
-    },
-
-    // ── Botones ─────────────────────────────────────────────────────────────
-
     iconBtn: {
         width: 40,
         height: 40,
         borderRadius: 20,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'rgba(255,255,255,0.12)',
+        backgroundColor: C.onVideo,
+        borderWidth: 2,
+        borderColor: C.onVideoLine,
+    },
+    iconBtnLg: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
     },
     playBtnMobile: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+        width: 60,
+        height: 60,
+        borderRadius: 30,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#FFF',
+        backgroundColor: C.onVideo,
+        borderWidth: 2,
+        borderColor: C.onVideoLine,
     },
 
     // ── Botones de control TV ───────────────────────────────────────────────
 
     ctrlBtn: {
-        width: 52,
-        height: 52,
-        borderRadius: 26,
+        width: 54,
+        height: 54,
+        borderRadius: 27,
+        flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        gap: 10,
+        // Tiza translúcida + borde: se lee igual sobre video claro u oscuro
+        backgroundColor: C.onVideo,
         borderWidth: 2,
-        borderColor: 'transparent',
+        borderColor: C.onVideoLine,
+    },
+    // Reproducción: mismo estilo que el resto (sin verde: el verde se leía
+    // como "seleccionado"); Play solo un poco más grande por jerarquía
+    ctrlBtnTransport: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+    },
+    ctrlBtnPlay: {
+        width: 68,
+        height: 68,
+        borderRadius: 34,
+    },
+    ctrlBtnPill: {
+        width: undefined,
+        paddingHorizontal: 20,
     },
     ctrlBtnFocused: {
-        borderColor: C.white,
-        backgroundColor: C.accent,
-        transform: [{ scale: 1.12 }],
+        backgroundColor: C.focusFill,
+        borderColor: C.focus,
+        transform: [{ scale: 1.1 }],
     },
     ctrlBtnPressed: {
         opacity: 0.7,
     },
+    ctrlLabel: {
+        color: C.chalk,
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    ctrlLabelFocused: {
+        color: C.onFocus,
+    },
 
-    // ── Error overlay ───────────────────────────────────────────────────────
+    // ── Estado del stream (conectando / reconectando / sin señal) ──────────
 
-    errorOverlay: {
+    // Indicador discreto durante una reconexión breve (arriba a la derecha)
+    quietSpinner: {
+        position: 'absolute',
+        top: 12,
+        right: 12,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: C.scrimSoft,
+    },
+    quietSpinnerTV: {
+        top: 30,
+        right: 32,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+    },
+    statusOverlay: {
         position: 'absolute',
         top: 0,
         bottom: 0,
         left: 0,
         right: 0,
-        backgroundColor: 'rgba(0,0,0,0.88)',
         justifyContent: 'center',
         alignItems: 'center',
         gap: 10,
+        backgroundColor: C.scrimSoft,
     },
-    errorTitle: {
-        color: C.white,
-        fontSize: 16,
+    statusOverlayDark: {
+        backgroundColor: C.scrim,
+        paddingHorizontal: 24,
+    },
+    statusIcon: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: 'rgba(240,180,60,0.12)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 4,
+    },
+    statusTitle: {
+        color: C.chalk,
+        fontFamily: FONT_DISPLAY,
+        fontSize: 18,
         fontWeight: '700',
     },
-    errorTitleTV: {
-        fontSize: 24,
+    statusTitleTV: {
+        fontSize: 28,
     },
-    errorSub: {
+    statusSub: {
         color: C.textDim,
         fontSize: 13,
+        textAlign: 'center',
     },
-    errorSubTV: {
+    statusSubTV: {
         fontSize: 17,
     },
-    errorDots: {
-        color: C.danger,
-        fontSize: 16,
-        letterSpacing: 4,
+    statusChip: {
+        paddingHorizontal: 12,
+        paddingVertical: 5,
+        borderRadius: 5,
+        backgroundColor: C.container,
+    },
+    statusChipText: {
+        color: C.onContainer,
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    retryBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
         marginTop: 6,
+        paddingHorizontal: 18,
+        paddingVertical: 10,
+        borderRadius: 6,
+        backgroundColor: C.container,
+    },
+    retryText: {
+        color: C.onContainer,
+        fontSize: 14,
+        fontWeight: '700',
     },
 });

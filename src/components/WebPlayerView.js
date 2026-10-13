@@ -1,6 +1,10 @@
 import React, { useRef, useEffect, useCallback } from 'react';
+import { View, NativeModules, findNodeHandle } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { isTV } from '../constants/config';
 import { styles } from '../styles/styles';
+
+const { BuriPip } = NativeModules;
 
 /**
  * Reproduce canales tipo "web" (embeds/iframes) en un WebView.
@@ -99,10 +103,19 @@ const AUTOPLAY_JS = `
 true;
 `;
 
-export default function WebPlayerView({ current, playerKey, muted, onError }) {
+export default function WebPlayerView({ url, muted, onLoaded, onError }) {
     const webRef = useRef(null);
+    const boxRef = useRef(null);
 
-    const injectMute = useCallback((m) => {
+    // TV: el WebView no debe quedarse con el foco del control remoto (si no,
+    // no se llega a los botones del reproductor ni a pantalla completa)
+    useEffect(() => {
+        if (!isTV) return;
+        const tag = findNodeHandle(boxRef.current);
+        if (tag != null) BuriPip?.blockFocus?.(tag);
+    }, []);
+
+    const injectMute = useCallback(m => {
         webRef.current?.injectJavaScript(`
             window.__buriMuted = ${m};
             document.querySelectorAll('video').forEach(function (v) {
@@ -117,25 +130,29 @@ export default function WebPlayerView({ current, playerKey, muted, onError }) {
     }, [muted, injectMute]);
 
     return (
-        <WebView
-            ref={webRef}
-            key={`${current.url}-${playerKey}`}
-            style={styles.player}
-            containerStyle={styles.player}
-            source={{ uri: current.url }}
-            javaScriptEnabled
-            domStorageEnabled
-            allowsFullscreenVideo
-            mediaPlaybackRequiresUserAction={false}
-            injectedJavaScript={AUTOPLAY_JS}
-            // Reaplica el estado de mute en cada página (incluye el salto al iframe)
-            onLoadEnd={() => injectMute(muted)}
-            // Evita que los popups de publicidad abran ventanas nuevas
-            setSupportMultipleWindows={false}
-            onError={onError}
-            onHttpError={(e) => {
-                if (e?.nativeEvent?.statusCode >= 400) onError?.(e);
-            }}
-        />
+        <View ref={boxRef} style={styles.player} collapsable={false}>
+            <WebView
+                ref={webRef}
+                style={styles.player}
+                containerStyle={styles.player}
+                source={{ uri: url }}
+                javaScriptEnabled
+                domStorageEnabled
+                allowsFullscreenVideo
+                mediaPlaybackRequiresUserAction={false}
+                injectedJavaScript={AUTOPLAY_JS}
+                // Reaplica el estado de mute en cada página (incluye el salto al iframe)
+                onLoadEnd={() => {
+                    injectMute(muted);
+                    onLoaded?.();
+                }}
+                // Evita que los popups de publicidad abran ventanas nuevas
+                setSupportMultipleWindows={false}
+                onError={onError}
+                onHttpError={e => {
+                    if (e?.nativeEvent?.statusCode >= 400) onError?.(e);
+                }}
+            />
+        </View>
     );
 }

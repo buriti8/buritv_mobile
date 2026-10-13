@@ -1,17 +1,44 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@react-native-vector-icons/fontawesome6';
 import { CastButton } from 'react-native-google-cast';
 import { C } from '../constants/colors';
 import { styles } from '../styles/styles';
+import ChannelPlate from './ChannelPlate';
+import OptionSegments from './OptionSegments';
 
+function IconBtn({ icon, size = 18, onPress, style, label }) {
+    return (
+        <Pressable
+            onPress={onPress}
+            hitSlop={12}
+            style={[styles.iconBtn, style]}
+            accessibilityLabel={label}
+        >
+            <FontAwesome6 name={icon} size={size} color={C.chalk} iconStyle="solid" />
+        </Pressable>
+    );
+}
+
+/**
+ * Controles sobre el video en el celular (aparecen al tocar):
+ *   arriba   la placa del canal (y volver, en pantalla completa) + Cast
+ *   centro   canal anterior · reproducir/pausar · canal siguiente
+ *   abajo    opciones del canal a la izquierda (solo en pantalla completa;
+ *            en vertical están bajo el video), sonido y pantalla completa
+ */
 export default function MobileControls({
     visible,
     fullscreen,
     paused,
     muted,
-    channelName,
+    channel,
+    channelNumber,
+    live,
+    sourceIndex,
+    status,
+    selectSource,
     prevChannel,
     nextChannel,
     togglePause,
@@ -23,81 +50,99 @@ export default function MobileControls({
 
     if (!visible) return null;
 
+    const sidePad = fullscreen
+        ? { paddingLeft: insets.left + 16, paddingRight: insets.right + 16 }
+        : null;
+    const count = channel?.sources.length ?? 0;
+
     return (
         <View style={styles.overlay} pointerEvents="box-none">
-            {/* Barra superior */}
             <View
-                style={[styles.topBar, fullscreen && styles.topBarFs, fullscreen && { paddingLeft: insets.left + 14, paddingRight: insets.right + 14 }]}
-                pointerEvents="auto"
+                style={[styles.topBar, fullscreen && styles.topBarFs, sidePad]}
+                pointerEvents="box-none"
             >
                 {fullscreen && (
-                    <Pressable onPress={exitFullscreen} hitSlop={12} style={styles.iconBtn}>
-                        <FontAwesome6
-                            name="arrow-left"
-                            size={18}
-                            color={C.white}
-                            iconStyle="solid"
-                        />
-                    </Pressable>
+                    <IconBtn
+                        icon="arrow-left"
+                        onPress={exitFullscreen}
+                        label="Salir de pantalla completa"
+                    />
                 )}
-                <View style={styles.liveBadge}>
-                    <View style={styles.liveDot} />
-                    <Text style={styles.liveText}>EN VIVO</Text>
+                <View style={styles.spacerShrink}>
+                    {channel && (
+                        <ChannelPlate
+                            size="mobile"
+                            number={channelNumber > 0 ? channelNumber : null}
+                            channel={channel}
+                            live={live}
+                        />
+                    )}
                 </View>
-                <Text style={styles.channelTitle} numberOfLines={1}>
-                    {channelName}
-                </Text>
-                <View style={styles.spacer} />
-                <CastButton style={{ width: 24, height: 24, tintColor: C.white }} />
+                <CastButton style={styles.castBtn} />
             </View>
 
-            {/* Controles centrales */}
             <View style={styles.centerControls} pointerEvents="box-none">
-                <Pressable onPress={prevChannel} hitSlop={12} style={styles.iconBtn}>
-                    <FontAwesome6
-                        name="backward-step"
-                        size={20}
-                        color={C.white}
-                        iconStyle="solid"
-                    />
-                </Pressable>
-                <Pressable onPress={togglePause} hitSlop={12} style={styles.playBtnMobile}>
+                <IconBtn
+                    icon="backward-step"
+                    size={20}
+                    onPress={prevChannel}
+                    style={styles.iconBtnLg}
+                    label="Canal anterior"
+                />
+                <Pressable
+                    onPress={togglePause}
+                    hitSlop={12}
+                    style={styles.playBtnMobile}
+                    accessibilityLabel={paused ? 'Reproducir' : 'Pausar'}
+                >
                     <FontAwesome6
                         name={paused ? 'play' : 'pause'}
-                        size={20}
-                        color="#000"
+                        size={22}
+                        color={C.chalk}
                         iconStyle="solid"
                     />
                 </Pressable>
-                <Pressable onPress={nextChannel} hitSlop={12} style={styles.iconBtn}>
-                    <FontAwesome6
-                        name="forward-step"
-                        size={20}
-                        color={C.white}
-                        iconStyle="solid"
-                    />
-                </Pressable>
+                <IconBtn
+                    icon="forward-step"
+                    size={20}
+                    onPress={nextChannel}
+                    style={styles.iconBtnLg}
+                    label="Canal siguiente"
+                />
             </View>
 
-            {/* Barra inferior */}
-            <View style={[styles.bottomBar, fullscreen && { paddingLeft: insets.left + 16, paddingRight: insets.right + 16, paddingBottom: insets.bottom + 10 }]} pointerEvents="auto">
-                <Pressable onPress={toggleMute} hitSlop={12} style={styles.iconBtn}>
-                    <FontAwesome6
-                        name={muted ? 'volume-xmark' : 'volume-high'}
-                        size={18}
-                        color={C.white}
-                        iconStyle="solid"
+            <View
+                style={[
+                    styles.bottomBar,
+                    sidePad,
+                    fullscreen && { paddingBottom: insets.bottom + 12 },
+                ]}
+                pointerEvents="box-none"
+            >
+                {/* En vertical las opciones ya están bajo el video: aquí solo en pantalla completa */}
+                {fullscreen && count > 1 ? (
+                    <OptionSegments
+                        count={count}
+                        current={sourceIndex}
+                        status={status}
+                        onSelect={selectSource}
+                        overVideo
                     />
-                </Pressable>
-                <View style={styles.spacer} />
-                <Pressable onPress={toggleFullscreen} hitSlop={12} style={styles.iconBtn}>
-                    <FontAwesome6
-                        name={fullscreen ? 'compress' : 'expand'}
-                        size={18}
-                        color={C.white}
-                        iconStyle="solid"
+                ) : (
+                    <View />
+                )}
+                <View style={styles.bottomUtil}>
+                    <IconBtn
+                        icon={muted ? 'volume-xmark' : 'volume-high'}
+                        onPress={toggleMute}
+                        label={muted ? 'Activar sonido' : 'Silenciar'}
                     />
-                </Pressable>
+                    <IconBtn
+                        icon={fullscreen ? 'compress' : 'expand'}
+                        onPress={toggleFullscreen}
+                        label={fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+                    />
+                </View>
             </View>
         </View>
     );

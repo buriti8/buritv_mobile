@@ -52,7 +52,10 @@ export default function useMobileControls({ loading }) {
         }
     }, [controlsVisible, showControls]);
 
-    // Botón atrás en fullscreen → salir de fullscreen en vez de cerrar la app
+    // Botón atrás (igual que en TV: primero se sale del reproductor):
+    //  - en pantalla completa → vuelve a la vista vertical
+    //  - con los controles del video a la vista → los oculta (queda la lista)
+    //  - si no, el sistema decide (salir de la app)
     useEffect(() => {
         if (isTV) return;
         const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -62,10 +65,15 @@ export default function useMobileControls({ loading }) {
                 showControls();
                 return true; // consumir el evento
             }
+            if (controlsVisible) {
+                clearTimeout(hideTimeout.current);
+                setControlsVisible(false);
+                return true;
+            }
             return false; // dejar que el sistema maneje (salir de app)
         });
         return () => sub.remove();
-    }, [fullscreen, showControls]);
+    }, [fullscreen, controlsVisible, showControls]);
 
     // Cleanup
     useEffect(() => {

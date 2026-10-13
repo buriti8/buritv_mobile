@@ -1,19 +1,34 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { BackHandler, useTVEventHandler } from 'react-native';
+import { BackHandler, TextInput, useTVEventHandler } from 'react-native';
 import { isTV } from '../constants/config';
 
 /**
  * Lógica de controles para Android TV:
- *  - Foco visual de botones
- *  - Auto-ocultar controles (4s)
- *  - Botón atrás → salir del modo teatro
- *  - Evento playPause del control remoto
+ *  - Foco visual de botones y auto-ocultar controles (4s)
+ *  - Botón atrás → salir de pantalla completa
+ *  - Teclas del control remoto:
+ *      Play/Pausa            → pausar / reanudar
+ *      CH+ / CH−             → canal siguiente / anterior (siempre)
+ *      0-9                   → ir a un canal por número
+ *      Info                  → banner del canal actual
+ *      Guía                  → mostrar la lista de canales
+ *    En pantalla completa con los controles ocultos:
+ *      ↑ / ↓                 → canal siguiente / anterior
+ *      ← / →                 → opción anterior / siguiente del canal
+ *      OK                    → mostrar controles
  */
-export default function useTVControls({ theater, setTheater, setPaused }) {
+export default function useTVControls({
+    theater,
+    setTheater,
+    setPaused,
+    onZap,
+    onDigit,
+    onOption,
+    onInfo,
+}) {
     const [ctrlFocused, setCtrlFocused] = useState(null);
     const [playNode, setPlayNode] = useState(null);
     const [tvUiVisible, setTvUiVisible] = useState(false);
-    const [listFocused, setListFocused] = useState(-1);
 
     const tvHideTimer = useRef(null);
 
@@ -27,6 +42,12 @@ export default function useTVControls({ theater, setTheater, setPaused }) {
         setTvUiVisible(true);
         clearTimeout(tvHideTimer.current);
         tvHideTimer.current = setTimeout(() => setTvUiVisible(false), 4000);
+    }, []);
+
+    // Al volver a la lista se ocultan los controles
+    const hideTvUi = useCallback(() => {
+        clearTimeout(tvHideTimer.current);
+        setTvUiVisible(false);
     }, []);
 
     // Enfocar un control → mostrar
@@ -48,15 +69,49 @@ export default function useTVControls({ theater, setTheater, setPaused }) {
         return () => sub.remove();
     }, [theater, setTheater]);
 
-    // Evento playPause del control remoto
+    // ── Teclas del control remoto ───────────────────────────────────────
     useTVEventHandler(
         useCallback(
             (evt) => {
-                if (!isTV) return;
-                if (evt?.eventType === 'playPause') setPaused((p) => !p);
+                if (!isTV || !evt?.eventType) return;
+                let type = evt.eventType;
+                // focus/blur también llegan por aquí: no son teclas
+                if (type === 'focus' || type === 'blur') return;
+                // Pulsación larga: llega al bajar y al soltar; usar solo la primera
+                if (type.startsWith('long')) {
+                    if (evt.eventKeyAction === 1) return;
+                    type = type[4].toLowerCase() + type.slice(5);
+                }
+                // Escribiendo en el buscador: los números y flechas son del teclado
+                if (TextInput.State.currentlyFocusedInput()) return;
+
+                if (type === 'playPause') setPaused((p) => !p);
+                else if (type === 'channelUp') onZap(1);
+                else if (type === 'channelDown') onZap(-1);
+                else if (/^[0-9]$/.test(type)) onDigit(type);
+                else if (type === 'info') onInfo();
+                else if (type === 'guide') setTheater(false);
+                else if (theater && !tvUiVisible) {
+                    if (type === 'up') onZap(1);
+                    else if (type === 'down') onZap(-1);
+                    else if (type === 'left') onOption(-1);
+                    else if (type === 'right') onOption(1);
+                }
+
                 if (ctrlFocused != null) tvPing();
             },
-            [ctrlFocused, tvPing, setPaused],
+            [
+                ctrlFocused,
+                tvPing,
+                setPaused,
+                setTheater,
+                theater,
+                tvUiVisible,
+                onZap,
+                onDigit,
+                onOption,
+                onInfo,
+            ],
         ),
     );
 
@@ -71,10 +126,7 @@ export default function useTVControls({ theater, setTheater, setPaused }) {
         playNode,
         registerPlayBtn,
         tvUiVisible,
-        setTvUiVisible,
-        listFocused,
-        setListFocused,
-        tvHideTimer,
+        hideTvUi,
         tvPing,
     };
 }

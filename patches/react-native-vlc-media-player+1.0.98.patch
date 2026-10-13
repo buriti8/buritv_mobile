@@ -1,0 +1,82 @@
+diff --git a/node_modules/react-native-vlc-media-player/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java b/node_modules/react-native-vlc-media-player/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
+index 8c7acdf..376a65a 100644
+--- a/node_modules/react-native-vlc-media-player/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
++++ b/node_modules/react-native-vlc-media-player/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
+@@ -65,6 +65,7 @@ class ReactVlcPlayerView extends TextureView implements
+ 
+     private boolean isPaused = true;
+     private boolean isHostPaused = false;
++    private boolean mPlayInBackground = false;
+     private int preVolume = 100;
+     private boolean autoAspectRatio = false;
+     private boolean acceptInvalidCertificates = false;
+@@ -117,6 +118,14 @@ class ReactVlcPlayerView extends TextureView implements
+ 
+     @Override
+     public void onHostResume() {
++        try {
++            onHostResumeSafe();
++        } catch (IllegalStateException e) {
++            Log.w("ReactVlcPlayerView", "onHostResume con player liberado", e);
++        }
++    }
++
++    private void onHostResumeSafe() {
+         if (mMediaPlayer != null && isSurfaceViewDestory && isHostPaused) {
+             IVLCVout vlcOut = mMediaPlayer.getVLCVout();
+             if (!vlcOut.areViewsAttached()) {
+@@ -133,10 +142,17 @@ class ReactVlcPlayerView extends TextureView implements
+ 
+     @Override
+     public void onHostPause() {
++        // Segundo plano / Picture-in-Picture: seguir reproduciendo
++        if (mPlayInBackground) return;
+         if (!isPaused && mMediaPlayer != null) {
+             isPaused = true;
+             isHostPaused = true;
+-            mMediaPlayer.pause();
++            try {
++                mMediaPlayer.pause();
++            } catch (IllegalStateException e) {
++                Log.w("ReactVlcPlayerView", "onHostPause con player liberado", e);
++                return;
++            }
+             // this.getHolder().setKeepScreenOn(false);
+             WritableMap map = Arguments.createMap();
+             map.putString("type", "Paused");
+@@ -496,6 +512,8 @@ class ReactVlcPlayerView extends TextureView implements
+         vout.detachViews();
+         //surfaceView.removeOnLayoutChangeListener(onLayoutChangeListener);
+         mMediaPlayer.release();
++        // Evita que el ciclo de vida (onHostPause/Resume) use un player liberado
++        mMediaPlayer = null;
+         libvlc.release();
+         libvlc = null;
+ 
+@@ -751,6 +769,10 @@ class ReactVlcPlayerView extends TextureView implements
+         Log.i(TAG, "Set acceptInvalidCertificates to: " + accept);
+     }
+ 
++    public void setPlayInBackground(boolean playInBackground) {
++        mPlayInBackground = playInBackground;
++    }
++
+     public void cleanUpResources() {
+         if (surfaceView != null) {
+             surfaceView.removeOnLayoutChangeListener(onLayoutChangeListener);
+diff --git a/node_modules/react-native-vlc-media-player/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerViewManager.java b/node_modules/react-native-vlc-media-player/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerViewManager.java
+index b935a4d..36373eb 100644
+--- a/node_modules/react-native-vlc-media-player/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerViewManager.java
++++ b/node_modules/react-native-vlc-media-player/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerViewManager.java
+@@ -153,6 +153,11 @@ public class ReactVlcPlayerViewManager extends SimpleViewManager<ReactVlcPlayerV
+         videoView.setTextTrack(textTrack);
+     }
+ 
++    @ReactProp(name = "playInBackground", defaultBoolean = false)
++    public void setPlayInBackground(final ReactVlcPlayerView videoView, final boolean playInBackground) {
++        videoView.setPlayInBackground(playInBackground);
++    }
++
+     @ReactProp(name = PROP_ACCEPT_INVALID_CERTIFICATES, defaultBoolean = false)
+     public void setAcceptInvalidCertificates(final ReactVlcPlayerView videoView, final boolean accept) {
+         videoView.setAcceptInvalidCertificates(accept);

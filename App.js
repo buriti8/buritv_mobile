@@ -1,28 +1,33 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { useWindowDimensions, AppState } from 'react-native';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { AppState, NativeModules, NativeEventEmitter, View } from 'react-native';
 import KeepAwake from 'react-native-keep-awake';
 import GoogleCast from 'react-native-google-cast';
 import { HotUpdater } from '@hot-updater/react-native';
 
-import { isTV, TV_ROW_H, TV_HEADER_H, HOT_UPDATER_URL } from './src/constants/config';
+import { isTV, HOT_UPDATER_URL, RESUME_LIVE_MS } from './src/constants/config';
 import checkForUpdates from './src/utils/checkForUpdates';
 import useChannels from './src/hooks/useChannels';
 import useStreamRecovery from './src/hooks/useStreamRecovery';
 import useTVControls from './src/hooks/useTVControls';
 import useMobileControls from './src/hooks/useMobileControls';
+import useZapping from './src/hooks/useZapping';
+import useFavorites from './src/hooks/useFavorites';
+import useSlowMode from './src/hooks/useSlowMode';
+import useDisplayStatus from './src/hooks/useDisplayStatus';
 import LoadingScreen from './src/screens/LoadingScreen';
 import TVLayout from './src/screens/TVLayout';
 import MobileLayout from './src/screens/MobileLayout';
+import ErrorBoundary from './src/components/ErrorBoundary';
+import Toast from './src/components/Toast';
+import { styles } from './src/styles/styles';
+
+const { BuriPip } = NativeModules;
 
 function IPTVPlayer() {
     const [paused, setPaused] = useState(false);
-    const [muted, setMuted] = useState(false);
+    const [userMuted, setUserMuted] = useState(false);
     const [theater, setTheater] = useState(false);
-    const [channelError, setChannelError] = useState(false);
-    const [playerKey, setPlayerKey] = useState(0);
-
-    const { height: winH } = useWindowDimensions();
-    const tvScrollRef = useRef(null);
+    const [inPip, setInPip] = useState(false);
 
     // ── Hooks ───────────────────────────────────────────────────────────────
 
@@ -30,40 +35,69 @@ function IPTVPlayer() {
         channels,
         vlcGlobalOpts,
         current,
-        loading,
         currentIndex,
+        source,
+        sourceIndex,
+        loading,
+        loadError,
+        retryLoad,
         selectChannel,
-        prevChannel,
-        nextChannel,
+        selectSource,
+        chooseSource,
+        rememberSource,
+        rankSources,
+        recordSourceResult,
+        getEnginePref,
         loadM3U,
-        errorTimeout,
     } = useChannels();
+    const { favorites, toggleFavorite } = useFavorites();
+    // Modo internet lento: automático, el usuario no lo ve ni lo maneja
+    const {
+        slowMode,
+        activations: slowActivations,
+        ready: slowModeReady,
+        reportStall,
+        reportBandwidth,
+    } = useSlowMode();
 
-    const { handleProgress, handleStopped } = useStreamRecovery({
+    const recovery = useStreamRecovery({
         current,
-        playerKey,
-        setPlayerKey,
+        source,
+        sourceIndex,
+        selectSource,
         paused,
-        setPaused,
-        setMuted,
-        channelError,
+        getEnginePref,
+        onSourceWorking: rememberSource,
+        rankSources,
+        onSourceResult: recordSourceResult,
+        onStall: reportStall,
+        slowMode,
     });
+    const { status, retry, resetCycle } = recovery;
+    // Lo que ve el usuario: las reconexiones breves de la misma opción no se muestran
+    const { displayStatus, quiet: quietReconnect } = useDisplayStatus(
+        status,
+        current ? `${current.id}|${sourceIndex}` : null,
+    );
 
-    const tvControls = useTVControls({
-        theater,
-        setTheater,
-        setPaused,
-    });
+    // Buffer y caché se fijan al crear el player: cuando la app detecta la red
+    // lenta, reconecta la señal con la configuración nueva (la señal ya se
+    // estaba cortando, así que este reintento no se nota de más)
+    useEffect(() => {
+        if (slowActivations > 0) retry();
+    }, [slowActivations, retry]);
 
     const mobileControls = useMobileControls({ loading });
+    const { showControls } = mobileControls;
+
+    const muted = userMuted || recovery.recoveryMuted;
 
     // ── Lifecycle ───────────────────────────────────────────────────────────
 
+    // Los canales no esperan a la consulta de actualizaciones
     useEffect(() => {
-        (async () => {
-            await checkForUpdates();
-            loadM3U();
-        })();
+        loadM3U();
+        checkForUpdates();
     }, [loadM3U]);
 
     // Al volver del background, vuelve a verificar si hay actualización
@@ -85,189 +119,281 @@ function IPTVPlayer() {
         paused ? KeepAwake.deactivate() : KeepAwake.activate();
     }, [paused]);
 
+    // ── Segundo plano / Picture-in-Picture ──────────────────────────────────
+    //  - Móvil: al salir de la app con algo sonando, sigue en ventana flotante.
+    //  - Si la app deja de verse del todo (se cierra el PiP, o en TV se sale
+    //    al inicio) se pausa. Al volver: si fue un momento (RESUME_LIVE_MS)
+    //    se retoma donde iba, sin reconectar; si fue más, se reconecta para
+    //    quedar en el vivo y no varios minutos atrás.
+
+    const pausedRef = useRef(paused);
+    pausedRef.current = paused;
+    const pausedByStop = useRef(false);
+    const stoppedAt = useRef(0);
+
+    useEffect(() => {
+        if (!BuriPip) return;
+        const emitter = new NativeEventEmitter(BuriPip);
+        const subs = [
+            emitter.addListener('buriPipChange', (e) => setInPip(!!e?.inPip)),
+            // Botones de la ventana flotante
+            emitter.addListener('buriPipAction', (e) => {
+                if (e?.action === 'playPause') setPaused((p) => !p);
+                else if (e?.action === 'mute') setUserMuted((m) => !m);
+            }),
+            emitter.addListener('buriLifecycle', (e) => {
+                if (e?.state === 'stop') {
+                    if (!pausedRef.current) {
+                        pausedByStop.current = true;
+                        stoppedAt.current = Date.now();
+                        setPaused(true);
+                    }
+                } else if (e?.state === 'start' && pausedByStop.current) {
+                    pausedByStop.current = false;
+                    setPaused(false);
+                    if (Date.now() - stoppedAt.current > RESUME_LIVE_MS) retry();
+                }
+            }),
+        ];
+        return () => subs.forEach((s) => s.remove());
+    }, [retry]);
+
+    useEffect(() => {
+        if (isTV) return;
+        const autoEnter = !!current && !paused && status !== 'failed';
+        if (BuriPip?.setPlaybackState) BuriPip.setPlaybackState(autoEnter, paused, userMuted);
+        else BuriPip?.setAutoEnter(autoEnter);
+    }, [current, paused, status, userMuted]);
+
     // ── Actions ─────────────────────────────────────────────────────────────
 
     const handleSelectChannel = useCallback(
         (ch) => {
             if (!ch) return;
-            clearTimeout(errorTimeout.current);
-            setChannelError(false);
-            setPlayerKey(0);
-            selectChannel(ch, { showControls: mobileControls.showControls });
+            selectChannel(ch);
             setPaused(false);
-            if (!isTV) mobileControls.showControls();
+            if (!isTV) showControls();
         },
-        [selectChannel, errorTimeout, mobileControls],
+        [selectChannel, showControls],
     );
 
+    // Navegación circular entre canales
     const handlePrevChannel = useCallback(() => {
-        if (currentIndex > 0) handleSelectChannel(channels[currentIndex - 1]);
+        if (!channels.length) return;
+        handleSelectChannel(channels[(currentIndex - 1 + channels.length) % channels.length]);
     }, [currentIndex, channels, handleSelectChannel]);
 
     const handleNextChannel = useCallback(() => {
-        if (currentIndex < channels.length - 1) handleSelectChannel(channels[currentIndex + 1]);
+        if (!channels.length) return;
+        handleSelectChannel(channels[(currentIndex + 1) % channels.length]);
     }, [currentIndex, channels, handleSelectChannel]);
+
+    // Elegir opción a mano (la misma = reintentar)
+    const handleSelectSource = useCallback(
+        (i) => {
+            setPaused(false);
+            if (i === sourceIndex) {
+                retry();
+            } else {
+                resetCycle();
+            }
+            // Queda recordada para este canal (también al reintentar la misma)
+            chooseSource(i);
+            if (!isTV) showControls();
+        },
+        [sourceIndex, retry, resetCycle, chooseSource, showControls],
+    );
+
+    // ── TV: control remoto (CH+/CH−, números, ↑/↓ y ←/→ en pantalla completa) ──
+
+    const zapping = useZapping({
+        channels,
+        currentIndex,
+        sourceIndex,
+        onSelectChannel: handleSelectChannel,
+        onSelectSource: handleSelectSource,
+    });
+
+    const tvControls = useTVControls({
+        theater,
+        setTheater,
+        setPaused,
+        onZap: zapping.zapBy,
+        onDigit: zapping.typeDigit,
+        onOption: zapping.optionBy,
+        onInfo: zapping.showCurrent,
+    });
+
+    const { zapBy } = zapping;
+    const tvPrev = useCallback(() => zapBy(-1), [zapBy]);
+    const tvNext = useCallback(() => zapBy(1), [zapBy]);
 
     const togglePause = useCallback(() => {
         setPaused((p) => !p);
-        if (!isTV) mobileControls.showControls();
-    }, [mobileControls]);
+        if (!isTV) showControls();
+    }, [showControls]);
 
     const toggleMute = useCallback(() => {
-        setMuted((m) => !m);
-        if (!isTV) mobileControls.showControls();
-    }, [mobileControls]);
+        setUserMuted((m) => !m);
+        if (!isTV) showControls();
+    }, [showControls]);
 
     const toggleTheater = useCallback(() => setTheater((t) => !t), []);
 
-    // ── Player error → salta al siguiente ───────────────────────────────────
-
-    const handlePlayerError = useCallback(() => {
-        setChannelError(true);
-        errorTimeout.current = setTimeout(() => {
-            const nextIdx = currentIndex < channels.length - 1 ? currentIndex + 1 : 0;
-            handleSelectChannel(channels[nextIdx]);
-        }, 5000);
-    }, [currentIndex, channels, handleSelectChannel, errorTimeout]);
-
-    // ── TV: scroll centrado ─────────────────────────────────────────────────
-
-    const tvScrollToIndex = useCallback(
-        (index) => {
-            if (!tvScrollRef.current || index < 0) return;
-            const y = Math.max(
-                0,
-                index * TV_ROW_H - (winH - TV_HEADER_H) / 2 + TV_ROW_H / 2,
-            );
-            tvScrollRef.current.scrollTo({ y, animated: true });
-        },
-        [winH],
-    );
+    const handleRetry = useCallback(() => {
+        setPaused(false);
+        retry();
+    }, [retry]);
 
     // ── Chromecast ──────────────────────────────────────────────────────────
 
-    const currentRef = useRef(null);
-    useEffect(() => {
-        currentRef.current = current;
-    }, [current]);
+    const sourceRef = useRef(null);
+    sourceRef.current = source ? { ...source, name: current?.name } : null;
 
-    const castChannel = useCallback(async (session, ch) => {
-        if (!ch || ch.type === 'web') return; // los embeds web no se pueden castear
+    const castSource = useCallback(async (session, src) => {
+        if (!src || src.type === 'web') return; // los embeds web no se pueden castear
         await session.client.loadMedia({
             mediaInfo: {
-                contentUrl: ch.url,
-                contentType: ch.url.includes('.m3u8')
-                    ? 'application/x-mpegURL'
-                    : 'video/mp2t',
+                contentUrl: src.url,
+                contentType: src.url.includes('.m3u8') ? 'application/x-mpegURL' : 'video/mp2t',
                 streamType: 'live',
-                metadata: { type: 'generic', title: ch.name },
+                metadata: { type: 'generic', title: src.name },
             },
         });
     }, []);
 
-    const startCasting = useCallback(async () => {
-        if (current?.type === 'web') return;
-        try {
-            const sessionManager = GoogleCast.getSessionManager();
-            const session = await sessionManager.getCurrentCastSession();
-            if (!session) {
-                // onSessionStarted cargará el canal cuando el usuario conecte
-                await GoogleCast.showCastDialog();
-                return;
-            }
-            await castChannel(session, current);
-        } catch (error) {
-            console.log('Error casting:', error);
-        }
-    }, [current, castChannel]);
-
-    // Al conectar un Chromecast (desde el diálogo o el CastButton), carga el canal actual
+    // Al conectar un Chromecast (desde el diálogo o el CastButton), carga lo actual
     useEffect(() => {
+        if (isTV) return;
         const sub = GoogleCast.getSessionManager().onSessionStarted((session) => {
-            castChannel(session, currentRef.current).catch((e) =>
-                console.log('Error casting:', e),
-            );
+            castSource(session, sourceRef.current).catch((e) => console.log('Error casting:', e));
         });
         return () => sub.remove();
-    }, [castChannel]);
+    }, [castSource]);
 
-    // Si ya hay sesión de cast activa, al cambiar de canal se actualiza el Chromecast
+    // Si ya hay sesión de cast activa, al cambiar de canal/opción se actualiza
     useEffect(() => {
-        if (!current) return;
+        if (isTV || !source) return;
         (async () => {
             try {
                 const session = await GoogleCast.getSessionManager().getCurrentCastSession();
-                if (session) await castChannel(session, current);
+                if (session) await castSource(session, sourceRef.current);
             } catch (error) {
                 console.log('Error casting:', error);
             }
         })();
-    }, [current, castChannel]);
+    }, [source, castSource]);
 
     // ── Render ──────────────────────────────────────────────────────────────
 
-    if (loading) return <LoadingScreen />;
+    const playerProps = useMemo(
+        () => ({
+            channel: current,
+            source,
+            sourceIndex,
+            engine: recovery.engine,
+            playerKey: recovery.playerKey,
+            paused,
+            muted,
+            background: !isTV,
+            vlcGlobalOpts,
+            slowMode,
+            maxBitRate: recovery.maxBitRate,
+            onBandwidth: reportBandwidth,
+            status: displayStatus,
+            quietReconnect,
+            onProgress: recovery.handleProgress,
+            onPlaying: recovery.handlePlaying,
+            onPlaybackState: recovery.handlePlaybackState,
+            onError: recovery.handleError,
+            onStopped: recovery.handleStopped,
+            onRetry: handleRetry,
+        }),
+        [
+            current,
+            source,
+            sourceIndex,
+            recovery.engine,
+            recovery.playerKey,
+            paused,
+            muted,
+            vlcGlobalOpts,
+            slowMode,
+            recovery.maxBitRate,
+            reportBandwidth,
+            displayStatus,
+            quietReconnect,
+            recovery.handleProgress,
+            recovery.handlePlaying,
+            recovery.handlePlaybackState,
+            recovery.handleError,
+            recovery.handleStopped,
+            handleRetry,
+        ],
+    );
+
+    if (loading || !slowModeReady) return <LoadingScreen error={loadError} onRetry={retryLoad} />;
+
+    const common = {
+        channels,
+        current,
+        currentIndex,
+        sourceIndex,
+        status: displayStatus,
+        paused,
+        muted,
+        playerProps,
+        selectChannel: handleSelectChannel,
+        selectSource: handleSelectSource,
+        prevChannel: handlePrevChannel,
+        nextChannel: handleNextChannel,
+        togglePause,
+        toggleMute,
+        favorites,
+        toggleFavorite,
+    };
 
     if (isTV) {
         return (
             <TVLayout
-                channels={channels}
-                current={current}
-                vlcGlobalOpts={vlcGlobalOpts}
-                currentIndex={currentIndex}
-                playerKey={playerKey}
-                paused={paused}
-                muted={muted}
-                channelError={channelError}
+                {...common}
+                prevChannel={tvPrev}
+                nextChannel={tvNext}
+                osd={zapping.osd}
+                tvPing={tvControls.tvPing}
                 theater={theater}
                 ctrlFocused={tvControls.ctrlFocused}
                 setCtrlFocused={tvControls.setCtrlFocused}
                 playNode={tvControls.playNode}
                 registerPlayBtn={tvControls.registerPlayBtn}
                 tvUiVisible={tvControls.tvUiVisible}
-                setTvUiVisible={tvControls.setTvUiVisible}
-                listFocused={tvControls.listFocused}
-                setListFocused={tvControls.setListFocused}
-                tvHideTimer={tvControls.tvHideTimer}
-                tvScrollRef={tvScrollRef}
-                selectChannel={handleSelectChannel}
-                prevChannel={handlePrevChannel}
-                nextChannel={handleNextChannel}
-                togglePause={togglePause}
-                toggleMute={toggleMute}
+                hideTvUi={tvControls.hideTvUi}
                 toggleTheater={toggleTheater}
-                tvScrollToIndex={tvScrollToIndex}
-                handleProgress={handleProgress}
-                handlePlayerError={handlePlayerError}
-                handleStopped={handleStopped}
             />
         );
     }
 
     return (
         <MobileLayout
-            channels={channels}
-            current={current}
-            vlcGlobalOpts={vlcGlobalOpts}
-            currentIndex={currentIndex}
-            playerKey={playerKey}
-            paused={paused}
-            muted={muted}
-            channelError={channelError}
+            {...common}
+            inPip={inPip}
             fullscreen={mobileControls.fullscreen}
             controlsVisible={mobileControls.controlsVisible}
-            selectChannel={handleSelectChannel}
-            prevChannel={handlePrevChannel}
-            nextChannel={handleNextChannel}
-            togglePause={togglePause}
-            toggleMute={toggleMute}
             toggleFullscreen={mobileControls.toggleFullscreen}
             exitFullscreen={mobileControls.exitFullscreen}
             handleVideoPress={mobileControls.handleVideoPress}
-            handleProgress={handleProgress}
-            handlePlayerError={handlePlayerError}
-            handleStopped={handleStopped}
         />
+    );
+}
+
+function App() {
+    return (
+        <View style={styles.appRoot}>
+            <ErrorBoundary>
+                <IPTVPlayer />
+            </ErrorBoundary>
+            <Toast />
+        </View>
     );
 }
 
@@ -275,4 +401,4 @@ export default HotUpdater.wrap({
     baseURL: HOT_UPDATER_URL,
     updateStrategy: 'appVersion',
     updateMode: 'manual',
-})(IPTVPlayer);
+})(App);
