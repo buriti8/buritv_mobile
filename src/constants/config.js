@@ -20,9 +20,9 @@ export const HOT_UPDATER_URL =
 // Wikimedia y otros CDNs rechazan logos pedidos sin User-Agent
 export const LOGO_HEADERS = { 'User-Agent': 'BuriTV/1.0' };
 
-export const TV_ROW_H = 60;
-export const TV_SECTION_H = 42;
-export const TV_HEADER_H = 72;
+export const TV_ROW_H = 50;
+export const TV_SECTION_H = 38;
+export const TV_HEADER_H = 60;
 export const MOBILE_ROW_H = 60;
 // Alto fijo de los títulos de sección en el celular (para getItemLayout)
 export const MOBILE_SECTION_H = 42;
@@ -41,6 +41,14 @@ export const WATCHDOG_MS = 2000;
 // se deja de reintentar y se escala (otro motor u otra opción)
 export const FLAP_LIMIT = 3;
 export const FLAP_WINDOW_MS = 60000;
+
+// ── Varios canales a la vez ──────────────────────────────────────────────
+// Cada recuadro es un player propio con su decodificador: un celular aguanta
+// 4, pero un TV Box modesto (poca memoria, pocos decodificadores por
+// hardware) solo 2.
+export const MULTI_MAX = isTV ? 2 : 4;
+// Solo el recuadro con sonido va a calidad completa; el resto, con tope
+export const MULTI_TILE_MAX_BITRATE = 1500000;
 
 // ── Tipografía ───────────────────────────────────────────────────────────
 // Roboto Condensed (viene con Android): la letra de los marcadores y placas

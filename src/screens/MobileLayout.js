@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import {
     View,
     Text,
@@ -9,17 +9,24 @@ import {
     BackHandler,
     useWindowDimensions,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@react-native-vector-icons/fontawesome6';
 import { MOBILE_ROW_H, MOBILE_SECTION_H } from '../constants/config';
 import { C } from '../constants/colors';
 import { styles } from '../styles/styles';
 import ChannelRow from '../components/ChannelRow';
+import SectionHeader from '../components/SectionHeader';
 import PlayerView from '../components/PlayerView';
 import MobileControls from '../components/MobileControls';
+import VideoGestureLayer from '../components/VideoGestureLayer';
+import MultiView from '../components/MultiView';
+import { MultiMobileSection, MultiFullscreenButtons } from '../components/MultiBars';
 import OptionSegments from '../components/OptionSegments';
 import ChannelFilters, { EmptyResults } from '../components/ChannelFilters';
 import useChannelFilter, { ALL } from '../hooks/useChannelFilter';
+
+const K_COLLAPSED = 'collapsedGroups';
 
 export default function MobileLayout({
     channels,
@@ -33,6 +40,7 @@ export default function MobileLayout({
     fullscreen,
     controlsVisible,
     inPip,
+    onPip,
     // Actions
     selectChannel,
     selectSource,
@@ -45,6 +53,10 @@ export default function MobileLayout({
     handleVideoPress,
     favorites,
     toggleFavorite,
+    // Varios canales a la vez
+    multi,
+    multiProps,
+    onEnterMulti,
 }) {
     const { width } = useWindowDimensions();
     const count = current?.sources.length ?? 0;
@@ -52,10 +64,35 @@ export default function MobileLayout({
     const filter = useChannelFilter(channels, favorites);
     const showSections = filter.category === ALL && !filter.query.trim();
 
+    // Categorías plegadas (se recuerdan). Solo en el celular: en TV el control
+    // remoto recorre la lista de corrido.
+    const [collapsed, setCollapsed] = useState(() => new Set());
+    useEffect(() => {
+        AsyncStorage.getItem(K_COLLAPSED)
+            .then(saved => {
+                if (saved) setCollapsed(new Set(JSON.parse(saved)));
+            })
+            .catch(() => {});
+    }, []);
+    const toggleGroup = useCallback(title => {
+        setCollapsed(prev => {
+            const next = new Set(prev);
+            if (!next.delete(title)) next.add(title);
+            AsyncStorage.setItem(K_COLLAPSED, JSON.stringify([...next])).catch(() => {});
+            return next;
+        });
+    }, []);
+
     // Filas de la lista (filtradas); los títulos de sección solo sin filtro
     // (con su posición: alturas fijas, así la lista sabe dónde está cada fila)
     const rows = useMemo(() => {
         const out = [];
+        const counts = {};
+        if (showSections) {
+            filter.items.forEach(({ ch }) => {
+                if (ch.group) counts[ch.group] = (counts[ch.group] || 0) + 1;
+            });
+        }
         let lastGroup;
         let y = 0;
         const push = (row, h) => {
@@ -64,13 +101,23 @@ export default function MobileLayout({
         };
         filter.items.forEach(({ ch, index }) => {
             if (showSections && ch.group && ch.group !== lastGroup) {
-                push({ type: 'header', title: ch.group, key: `h-${index}` }, MOBILE_SECTION_H);
+                push(
+                    {
+                        type: 'header',
+                        title: ch.group,
+                        count: counts[ch.group],
+                        first: out.length === 0,
+                        key: `h-${index}`,
+                    },
+                    MOBILE_SECTION_H,
+                );
                 lastGroup = ch.group;
             }
+            if (showSections && ch.group && collapsed.has(ch.group)) return;
             push({ type: 'channel', ch, index, key: ch.id }, MOBILE_ROW_H);
         });
         return out;
-    }, [filter.items, showSections]);
+    }, [filter.items, showSections, collapsed]);
 
     const getItemLayout = useCallback(
         (data, i) => ({ length: data[i].h, offset: data[i].y, index: i }),
@@ -134,9 +181,38 @@ export default function MobileLayout({
                 bigVideo ? styles.mobilePlayerFs : { height: Math.round((width * 9) / 16) },
             ]}
         >
-            <PlayerView {...playerProps} compact={inPip} />
-            {!inPip && <Pressable style={styles.videoTouchable} onPress={handleVideoPress} />}
-            {!inPip && (
+            {multi.active ? (
+                <>
+                    <MultiView
+                        tiles={multi.tiles}
+                        channels={channels}
+                        focusId={multi.focusId}
+                        max={multi.max}
+                        onListen={multi.setFocusId}
+                        onRemove={multi.remove}
+                        onAdd={multi.openPicker}
+                        onPick={multi.pick}
+                        onClosePicker={multi.closePicker}
+                        safeArea={fullscreen}
+                        picking={multi.picking}
+                        activeIds={multi.activeIds}
+                        favorites={favorites}
+                        {...multiProps}
+                    />
+                    {fullscreen && (
+                        <MultiFullscreenButtons
+                            onExitFullscreen={exitFullscreen}
+                            onExit={multi.exit}
+                        />
+                    )}
+                </>
+            ) : (
+                <PlayerView {...playerProps} compact={inPip} />
+            )}
+            {!inPip && !multi.active && (
+                <VideoGestureLayer onTap={handleVideoPress} />
+            )}
+            {!inPip && !multi.active && (
                 <MobileControls
                     visible={controlsVisible}
                     fullscreen={fullscreen}
@@ -154,6 +230,8 @@ export default function MobileLayout({
                     toggleMute={toggleMute}
                     toggleFullscreen={toggleFullscreen}
                     exitFullscreen={exitFullscreen}
+                    onMulti={onEnterMulti}
+                    onPip={onPip}
                 />
             )}
         </View>
@@ -168,7 +246,17 @@ export default function MobileLayout({
             {playerBlock}
             {!bigVideo && (
                 <View style={styles.mobileListWrap}>
-                    {current && (
+                    {multi.active && (
+                        <MultiMobileSection
+                            count={multi.tiles.length}
+                            max={multi.max}
+                            fullscreen={fullscreen}
+                            onToggleFullscreen={toggleFullscreen}
+                            onAdd={multi.openPicker}
+                            onExit={multi.exit}
+                        />
+                    )}
+                    {!multi.active && current && (
                         <View style={styles.nowSection}>
                             <View style={styles.nowRow}>
                                 <View style={styles.nowNum}>
@@ -200,6 +288,19 @@ export default function MobileLayout({
                                         </Text>
                                     </View>
                                 </View>
+                                <Pressable
+                                    onPress={onEnterMulti}
+                                    hitSlop={10}
+                                    style={styles.favBtn}
+                                    accessibilityLabel="Varios canales a la vez"
+                                >
+                                    <FontAwesome6
+                                        name="table-cells-large"
+                                        size={18}
+                                        color={C.textDim}
+                                        iconStyle="solid"
+                                    />
+                                </Pressable>
                                 <Pressable
                                     onPress={() => toggleFavorite(current.id)}
                                     hitSlop={10}
@@ -246,12 +347,23 @@ export default function MobileLayout({
                         }
                         renderItem={({ item: row }) =>
                             row.type === 'header' ? (
-                                <Text style={styles.sectionTitle}>{row.title}</Text>
+                                <SectionHeader
+                                    title={row.title}
+                                    count={row.count}
+                                    first={row.first}
+                                    collapsed={collapsed.has(row.title)}
+                                    onToggle={() => toggleGroup(row.title)}
+                                    height={MOBILE_SECTION_H}
+                                />
                             ) : (
                                 <ChannelRow
                                     item={row.ch}
                                     index={row.index}
-                                    active={row.ch.id === current?.id}
+                                    active={
+                                        multi.active
+                                            ? multi.activeIds.has(row.ch.id)
+                                            : row.ch.id === current?.id
+                                    }
                                     favorite={favorites.has(row.ch.id)}
                                     onPress={handlePickChannel}
                                     onLongPress={handleToggleFavorite}

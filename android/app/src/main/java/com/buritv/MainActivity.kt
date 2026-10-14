@@ -8,7 +8,6 @@ import android.content.BroadcastReceiver
 import android.content.res.Configuration
 import android.os.Bundle
 import androidx.annotation.Nullable
-import com.reactnative.googlecast.api.RNGCCastContext
 
 class MainActivity : ReactActivity() {
   // Botones de la ventana flotante (pausar / silenciar)
@@ -16,9 +15,6 @@ class MainActivity : ReactActivity() {
 
   override fun onCreate(@Nullable savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-
-    // lazy load Google Cast context (if supported on this device)
-    RNGCCastContext.getSharedInstance(this)
 
     pipReceiver = BuriPipModule.registerActionReceiver(this)
   }

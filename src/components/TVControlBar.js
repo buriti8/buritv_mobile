@@ -24,6 +24,7 @@ export default function TVControlBar({
     ctrlFocused,
     setCtrlFocused,
     registerPlayBtn,
+    registerTheaterBtn,
     paused,
     muted,
     channel,
@@ -38,6 +39,7 @@ export default function TVControlBar({
     toggleTheater,
     favorite,
     toggleFavorite,
+    onMulti,
 }) {
     const bind = id => ({
         focused: ctrlFocused === id,
@@ -133,7 +135,16 @@ export default function TVControlBar({
                         onPress={toggleFavorite}
                         {...bind('fav')}
                     />
+                    {onMulti && (
+                        <ControlButton
+                            icon="table-cells-large"
+                            size={20}
+                            onPress={onMulti}
+                            {...bind('multi')}
+                        />
+                    )}
                     <ControlButton
+                        ref={registerTheaterBtn}
                         icon={theater ? 'compress' : 'expand'}
                         size={20}
                         onPress={toggleTheater}

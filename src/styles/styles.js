@@ -1,12 +1,6 @@
 import { StyleSheet } from 'react-native';
 import { C } from '../constants/colors';
-import {
-    TV_ROW_H,
-    TV_SECTION_H,
-    MOBILE_ROW_H,
-    MOBILE_SECTION_H,
-    FONT_DISPLAY,
-} from '../constants/config';
+import { TV_ROW_H, MOBILE_ROW_H, FONT_DISPLAY } from '../constants/config';
 
 // Sistema visual "estadio de noche"
 //  - Tipografía: Roboto Condensed (FONT_DISPLAY) para nombres, números y
@@ -73,7 +67,7 @@ export const styles = StyleSheet.create({
     brand: {
         color: C.chalk,
         fontFamily: FONT_DISPLAY,
-        fontSize: 26,
+        fontSize: 22,
         fontWeight: '700',
     },
     brandAccent: {
@@ -81,7 +75,7 @@ export const styles = StyleSheet.create({
     },
     brandCount: {
         color: C.textMute,
-        fontSize: 13,
+        fontSize: 12,
     },
 
     // ── Loading ─────────────────────────────────────────────────────────────
@@ -127,15 +121,15 @@ export const styles = StyleSheet.create({
     // ════════════ TV ════════════════════════════════════════════════════════
 
     tvListCol: {
-        width: 360,
+        width: 300,
         backgroundColor: C.panel,
     },
     tvBrandBar: {
         flexDirection: 'row',
         alignItems: 'baseline',
         justifyContent: 'space-between',
-        paddingHorizontal: 22,
-        paddingTop: 26,
+        paddingHorizontal: 18,
+        paddingTop: 18,
     },
     tvPlayerCol: {
         flex: 1,
@@ -302,32 +296,59 @@ export const styles = StyleSheet.create({
         flex: 1,
     },
     listContentTV: {
-        paddingTop: 10,
-        paddingHorizontal: 14,
+        paddingTop: 6,
+        paddingHorizontal: 8,
         paddingBottom: 40,
     },
     listContent: {
         paddingHorizontal: 8,
         paddingBottom: 24,
     },
-    sectionTitle: {
-        height: MOBILE_SECTION_H,
-        color: C.textDim,
-        fontFamily: FONT_DISPLAY,
-        fontSize: 15,
-        fontWeight: '700',
-        paddingHorizontal: 10,
-        paddingTop: 16,
-        paddingBottom: 6,
+    // Separador de categoría (mismo estilo que la web): barra verde a la
+    // izquierda, línea arriba y abajo, nombre y cantidad
+    sectionRow: {
+        paddingTop: 8,
     },
-    sectionTitleTV: {
-        height: TV_SECTION_H,
+    sectionBar: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingLeft: 12,
+        paddingRight: 12,
+        backgroundColor: C.panel,
+        borderLeftWidth: 3,
+        borderLeftColor: C.accentSoft,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: C.border,
+    },
+    sectionBarTop: {
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: C.border,
+    },
+    sectionBarTV: {
+        paddingLeft: 10,
+    },
+    sectionChevronClosed: {
+        transform: [{ rotate: '-90deg' }],
+    },
+    sectionName: {
+        flex: 1,
         color: C.textDim,
         fontFamily: FONT_DISPLAY,
-        fontSize: 17,
+        fontSize: 13,
         fontWeight: '700',
-        paddingHorizontal: 10,
-        paddingTop: 14,
+    },
+    sectionNameTV: {
+        fontSize: 14,
+    },
+    sectionCount: {
+        color: C.textMute,
+        fontSize: 11,
+        fontVariant: ['tabular-nums'],
+    },
+    sectionCountTV: {
+        fontSize: 12,
     },
 
     // ── Fila de canal ───────────────────────────────────────────────────────
@@ -376,7 +397,7 @@ export const styles = StyleSheet.create({
         includeFontPadding: false,
     },
     itemNumTV: {
-        fontSize: 18,
+        fontSize: 15,
     },
     itemNumActive: {
         color: C.white,
@@ -397,8 +418,8 @@ export const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     logoTileTV: {
-        width: 40,
-        height: 40,
+        width: 34,
+        height: 34,
     },
     logoImg: {
         width: '100%',
@@ -421,7 +442,7 @@ export const styles = StyleSheet.create({
         fontWeight: '700',
     },
     itemNameTV: {
-        fontSize: 20,
+        fontSize: 17,
     },
     itemNameOn: {
         color: C.text,
@@ -459,6 +480,39 @@ export const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
+    },
+
+    // Indicador al deslizar para cambiar volumen o brillo
+    gestureHud: {
+        position: 'absolute',
+        top: 16,
+        alignSelf: 'center',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 9,
+        borderRadius: 20,
+        backgroundColor: C.scrim,
+    },
+    gestureTrack: {
+        width: 110,
+        height: 4,
+        borderRadius: 2,
+        overflow: 'hidden',
+        backgroundColor: C.onVideoLine,
+    },
+    gestureFill: {
+        height: '100%',
+        backgroundColor: C.accentSoft,
+    },
+    gestureText: {
+        minWidth: 38,
+        color: C.chalk,
+        fontSize: 13,
+        fontWeight: '700',
+        fontVariant: ['tabular-nums'],
+        textAlign: 'right',
     },
 
     // ── Lo que suena (móvil, bajo el video) ─────────────────────────────────
@@ -601,10 +655,10 @@ export const styles = StyleSheet.create({
         gap: 10,
     },
     filtersTV: {
-        paddingHorizontal: 14,
-        paddingTop: 18,
-        paddingBottom: 6,
-        gap: 12,
+        paddingHorizontal: 10,
+        paddingTop: 10,
+        paddingBottom: 4,
+        gap: 8,
     },
     search: {
         flexDirection: 'row',
@@ -618,7 +672,7 @@ export const styles = StyleSheet.create({
         borderColor: 'transparent',
     },
     searchTV: {
-        height: 48,
+        height: 40,
     },
     searchFocused: {
         borderColor: C.focus,
@@ -631,7 +685,7 @@ export const styles = StyleSheet.create({
         paddingVertical: 0,
     },
     searchInputTV: {
-        fontSize: 17,
+        fontSize: 15,
     },
     searchClear: {
         width: 22,
@@ -657,8 +711,8 @@ export const styles = StyleSheet.create({
         borderColor: 'transparent',
     },
     tabTV: {
-        height: 42,
-        paddingHorizontal: 16,
+        height: 34,
+        paddingHorizontal: 13,
     },
     tabOn: {
         backgroundColor: C.container,
@@ -675,7 +729,7 @@ export const styles = StyleSheet.create({
         fontWeight: '700',
     },
     tabTextTV: {
-        fontSize: 17,
+        fontSize: 15,
     },
     tabTextOn: {
         color: C.onContainer,
@@ -745,11 +799,6 @@ export const styles = StyleSheet.create({
     spacerShrink: {
         flex: 1,
         minWidth: 0,
-    },
-    castBtn: {
-        width: 24,
-        height: 24,
-        tintColor: C.chalk,
     },
     centerControls: {
         flexDirection: 'row',
@@ -934,5 +983,219 @@ export const styles = StyleSheet.create({
         color: C.onContainer,
         fontSize: 14,
         fontWeight: '700',
+    },
+
+    // ── Varios canales a la vez ─────────────────────────────────────────────
+
+    multiOuter: {
+        flex: 1,
+        backgroundColor: '#000',
+    },
+    multiArea: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#000',
+    },
+    multiGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+    },
+    multiTile: {
+        backgroundColor: '#000',
+        borderWidth: 2,
+        borderColor: C.bg,
+        overflow: 'hidden',
+    },
+    // El recuadro que tiene el sonido
+    multiTileOn: {
+        borderColor: C.accentSoft,
+    },
+    multiTileEmpty: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        borderStyle: 'dashed',
+        borderColor: C.border,
+        backgroundColor: C.bg,
+    },
+    multiEmptyText: {
+        color: C.textMute,
+        fontSize: 12,
+        textAlign: 'center',
+        paddingHorizontal: 8,
+    },
+    multiEmptyTextTV: {
+        fontSize: 17,
+    },
+    multiBar: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 6,
+        paddingVertical: 4,
+        backgroundColor: C.scrim,
+    },
+    multiBarTV: {
+        gap: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+    },
+    multiNum: {
+        minWidth: 20,
+        height: 20,
+        paddingHorizontal: 4,
+        borderRadius: 3,
+        backgroundColor: C.accent,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    multiNumTV: {
+        minWidth: 32,
+        height: 32,
+        borderRadius: 4,
+    },
+    multiNumText: {
+        color: C.white,
+        fontFamily: FONT_DISPLAY,
+        fontSize: 13,
+        fontWeight: '700',
+        fontVariant: ['tabular-nums'],
+        includeFontPadding: false,
+    },
+    multiNumTextTV: {
+        fontSize: 20,
+    },
+    multiName: {
+        flex: 1,
+        color: C.chalk,
+        fontFamily: FONT_DISPLAY,
+        fontSize: 13,
+        fontWeight: '700',
+    },
+    multiNameTV: {
+        fontSize: 21,
+    },
+    multiOpt: {
+        height: 20,
+        paddingHorizontal: 6,
+        borderRadius: 3,
+        backgroundColor: C.container,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    multiOptTV: {
+        height: 32,
+        paddingHorizontal: 10,
+    },
+    multiOptText: {
+        color: C.onContainer,
+        fontSize: 11,
+        fontWeight: '700',
+    },
+    multiOptTextTV: {
+        fontSize: 16,
+    },
+    multiRemove: {
+        position: 'absolute',
+        top: 4,
+        right: 4,
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: C.onVideo,
+    },
+    // Salir de pantalla completa / de varios canales (pantalla completa, móvil)
+    multiFsBtns: {
+        position: 'absolute',
+        top: 12,
+        left: 12,
+        flexDirection: 'row',
+        gap: 10,
+    },
+    // Fila bajo el video en el celular (en lugar de "lo que suena")
+    multiSection: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: C.border,
+    },
+    multiIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: 5,
+        backgroundColor: C.accent,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    multiTitle: {
+        color: C.chalk,
+        fontFamily: FONT_DISPLAY,
+        fontSize: 20,
+        fontWeight: '700',
+    },
+    multiSub: {
+        color: C.textDim,
+        fontSize: 12,
+    },
+    multiExitBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        height: 38,
+        paddingHorizontal: 14,
+        borderRadius: 6,
+        backgroundColor: C.container,
+    },
+    multiExitText: {
+        color: C.onContainer,
+        fontSize: 14,
+        fontWeight: '700',
+    },
+    // Selector de canal (Modal)
+    pickerHead: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: 6,
+    },
+    pickerTitle: {
+        flex: 1,
+        color: C.chalk,
+        fontFamily: FONT_DISPLAY,
+        fontSize: 22,
+        fontWeight: '700',
+    },
+    // Barra bajo el video en TV
+    multiTvBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 24,
+        paddingHorizontal: 32,
+        paddingVertical: 14,
+        backgroundColor: '#000',
+    },
+    multiTvButtons: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 14,
+    },
+    multiHint: {
+        flexShrink: 1,
+        color: C.textDim,
+        fontSize: 15,
+        textAlign: 'right',
     },
 });

@@ -2,7 +2,6 @@ import React from 'react';
 import { View, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome6 } from '@react-native-vector-icons/fontawesome6';
-import { CastButton } from 'react-native-google-cast';
 import { C } from '../constants/colors';
 import { styles } from '../styles/styles';
 import ChannelPlate from './ChannelPlate';
@@ -23,7 +22,7 @@ function IconBtn({ icon, size = 18, onPress, style, label }) {
 
 /**
  * Controles sobre el video en el celular (aparecen al tocar):
- *   arriba   la placa del canal (y volver, en pantalla completa) + Cast
+ *   arriba   la placa del canal (y volver, en pantalla completa)
  *   centro   canal anterior · reproducir/pausar · canal siguiente
  *   abajo    opciones del canal a la izquierda (solo en pantalla completa;
  *            en vertical están bajo el video), sonido y pantalla completa
@@ -45,6 +44,8 @@ export default function MobileControls({
     toggleMute,
     toggleFullscreen,
     exitFullscreen,
+    onMulti,
+    onPip,
 }) {
     const insets = useSafeAreaInsets();
 
@@ -78,7 +79,6 @@ export default function MobileControls({
                         />
                     )}
                 </View>
-                <CastButton style={styles.castBtn} />
             </View>
 
             <View style={styles.centerControls} pointerEvents="box-none">
@@ -132,6 +132,20 @@ export default function MobileControls({
                     <View />
                 )}
                 <View style={styles.bottomUtil}>
+                    {onPip && (
+                        <IconBtn
+                            icon="window-restore"
+                            onPress={onPip}
+                            label="Imagen en imagen"
+                        />
+                    )}
+                    {onMulti && (
+                        <IconBtn
+                            icon="table-cells-large"
+                            onPress={onMulti}
+                            label="Varios canales a la vez"
+                        />
+                    )}
                     <IconBtn
                         icon={muted ? 'volume-xmark' : 'volume-high'}
                         onPress={toggleMute}

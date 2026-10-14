@@ -228,6 +228,31 @@ export default function useStreamRecovery({
         [markPlaying],
     );
 
+    // ── ExoPlayer reproduce el video pero no puede decodificar el audio ─────
+    // (MP2, AC3… según el equipo): queda sin sonido y sin error. Si hay pistas
+    // de audio y ninguna quedó seleccionada, se pasa a VLC, que sí las abre.
+    const audioTimer = useRef(null);
+    const audioMissing = useRef(false);
+    useEffect(() => {
+        audioMissing.current = false;
+        clearTimeout(audioTimer.current);
+    }, [source?.url, engine, playerKey]);
+    useEffect(() => () => clearTimeout(audioTimer.current), []);
+    const handleAudioTracks = useCallback(e => {
+        const tracks = e?.audioTracks;
+        if (!Array.isArray(tracks) || !tracks.length) return;
+        audioMissing.current = !tracks.some(t => t.selected);
+        clearTimeout(audioTimer.current);
+        if (!audioMissing.current) return;
+        // Margen: la selección puede llegar un instante después de la lista
+        audioTimer.current = setTimeout(() => {
+            const { source: src, engine: eng } = live.current;
+            if (!audioMissing.current || !src || eng !== 'exo') return;
+            console.log(`[BuriTV] Sin audio en ExoPlayer (${src.url}) → VLC`);
+            setEngineOverride({ url: src.url, engine: 'vlc' });
+        }, 1500);
+    }, []);
+
     // ── Algo falló: decidir el siguiente paso ───────────────────────────
     const fail = useCallback(
         (reason, code) => {
@@ -398,6 +423,7 @@ export default function useStreamRecovery({
         handleProgress,
         handlePlaying: markPlaying,
         handlePlaybackState,
+        handleAudioTracks,
         handleError,
         handleStopped,
         retry,

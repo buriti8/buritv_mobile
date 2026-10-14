@@ -1,11 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { BackHandler, TextInput, useTVEventHandler } from 'react-native';
+import { BackHandler, TextInput, UIManager, findNodeHandle, useTVEventHandler } from 'react-native';
 import { isTV } from '../constants/config';
 
 /**
  * Lógica de controles para Android TV:
  *  - Foco visual de botones y auto-ocultar controles (4s)
- *  - Botón atrás → salir de pantalla completa
+ *  - Botón atrás en pantalla completa → sale de ella y deja el foco en el
+ *    botón de pantalla completa (no vuelve a la lista)
  *  - Teclas del control remoto:
  *      Play/Pausa            → pausar / reanudar
  *      CH+ / CH−             → canal siguiente / anterior (siempre)
@@ -31,6 +32,10 @@ export default function useTVControls({
     const [tvUiVisible, setTvUiVisible] = useState(false);
 
     const tvHideTimer = useRef(null);
+    const theaterBtn = useRef(null);
+    const registerTheaterBtn = useCallback(node => {
+        theaterBtn.current = node;
+    }, []);
 
     // ── Ref callback para el botón Play (puente de foco) ────────────────
     const registerPlayBtn = useCallback((node) => {
@@ -62,12 +67,21 @@ export default function useTVControls({
         const sub = BackHandler.addEventListener('hardwareBackPress', () => {
             if (theater) {
                 setTheater(false);
+                tvPing();
+                // Esperar a que se monten la lista y la barra: la lista pide el
+                // foco al abrirse y hay que quitárselo
+                setTimeout(() => {
+                    const tag = theaterBtn.current && findNodeHandle(theaterBtn.current);
+                    if (tag != null) {
+                        UIManager.dispatchViewManagerCommand(tag, 'requestTVFocus', []);
+                    }
+                }, 350);
                 return true;
             }
             return false;
         });
         return () => sub.remove();
-    }, [theater, setTheater]);
+    }, [theater, setTheater, tvPing]);
 
     // ── Teclas del control remoto ───────────────────────────────────────
     useTVEventHandler(
@@ -125,6 +139,7 @@ export default function useTVControls({
         setCtrlFocused,
         playNode,
         registerPlayBtn,
+        registerTheaterBtn,
         tvUiVisible,
         hideTvUi,
         tvPing,

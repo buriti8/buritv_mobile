@@ -19,7 +19,6 @@
         "patch-package": "^8.0.1",
         "react": "19.1.0",
         "react-native": "npm:react-native-tvos@0.81.0-0",
-        "react-native-google-cast": "^4.9.1",
         "react-native-keep-awake": "^4.0.0",
         "react-native-onesignal": "5.3.6",
         "react-native-orientation-locker": "^1.7.0",

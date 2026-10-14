@@ -23,24 +23,29 @@ const norm = (s) =>
  *  - La categoría elegida se recuerda al cerrar y volver a abrir la app.
  *    `ready` indica que ya se leyó (para no pintar la lista dos veces).
  */
-export default function useChannelFilter(channels, favorites) {
+export default function useChannelFilter(channels, favorites, persist = true) {
     const [query, setQuery] = useState('');
     const [category, setCategoryState] = useState(ALL);
-    const [ready, setReady] = useState(false);
+    const [ready, setReady] = useState(!persist);
 
     useEffect(() => {
+        // (el selector de "varios canales" no toca la categoría guardada de la lista)
+        if (!persist) return;
         AsyncStorage.getItem(K_CATEGORY)
             .then((saved) => {
                 if (saved) setCategoryState(saved);
             })
             .catch(() => {})
             .finally(() => setReady(true));
-    }, []);
+    }, [persist]);
 
-    const setCategory = useCallback((id) => {
-        setCategoryState(id);
-        AsyncStorage.setItem(K_CATEGORY, id).catch(() => {});
-    }, []);
+    const setCategory = useCallback(
+        (id) => {
+            setCategoryState(id);
+            if (persist) AsyncStorage.setItem(K_CATEGORY, id).catch(() => {});
+        },
+        [persist],
+    );
 
     const favCount = useMemo(
         () => (favorites?.size ? channels.filter((ch) => favorites.has(ch.id)).length : 0),

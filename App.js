@@ -1,10 +1,9 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { AppState, NativeModules, NativeEventEmitter, View } from 'react-native';
+import { AppState, BackHandler, NativeModules, NativeEventEmitter, View } from 'react-native';
 import KeepAwake from 'react-native-keep-awake';
-import GoogleCast from 'react-native-google-cast';
 import { HotUpdater } from '@hot-updater/react-native';
 
-import { isTV, HOT_UPDATER_URL, RESUME_LIVE_MS } from './src/constants/config';
+import { isTV, HOT_UPDATER_URL, RESUME_LIVE_MS, MULTI_MAX } from './src/constants/config';
 import checkForUpdates from './src/utils/checkForUpdates';
 import useChannels from './src/hooks/useChannels';
 import useStreamRecovery from './src/hooks/useStreamRecovery';
@@ -13,6 +12,7 @@ import useMobileControls from './src/hooks/useMobileControls';
 import useZapping from './src/hooks/useZapping';
 import useFavorites from './src/hooks/useFavorites';
 import useSlowMode from './src/hooks/useSlowMode';
+import useMultiView from './src/hooks/useMultiView';
 import useDisplayStatus from './src/hooks/useDisplayStatus';
 import LoadingScreen from './src/screens/LoadingScreen';
 import TVLayout from './src/screens/TVLayout';
@@ -23,11 +23,15 @@ import { styles } from './src/styles/styles';
 
 const { BuriPip } = NativeModules;
 
+const noop = () => {};
+
 function IPTVPlayer() {
     const [paused, setPaused] = useState(false);
     const [userMuted, setUserMuted] = useState(false);
     const [theater, setTheater] = useState(false);
     const [inPip, setInPip] = useState(false);
+    // Botón de imagen en imagen (solo si el equipo y esta versión nativa lo soportan)
+    const [pipAvailable, setPipAvailable] = useState(false);
 
     // ── Hooks ───────────────────────────────────────────────────────────────
 
@@ -60,12 +64,22 @@ function IPTVPlayer() {
         reportBandwidth,
     } = useSlowMode();
 
+    // Varios canales a la vez: cada recuadro tiene su propio player; el
+    // principal se pausa y se desmonta mientras tanto
+    const multi = useMultiView({
+        current,
+        sourceIndex,
+        selectChannel,
+        rankSources,
+        max: MULTI_MAX,
+    });
+
     const recovery = useStreamRecovery({
         current,
         source,
         sourceIndex,
         selectSource,
-        paused,
+        paused: paused || multi.active,
         getEnginePref,
         onSourceWorking: rememberSource,
         rankSources,
@@ -159,22 +173,35 @@ function IPTVPlayer() {
     }, [retry]);
 
     useEffect(() => {
+        if (isTV || typeof BuriPip?.enterPip !== 'function') return;
+        BuriPip.isSupported()
+            .then(setPipAvailable)
+            .catch(() => {});
+    }, []);
+    const enterPip = useCallback(() => BuriPip?.enterPip?.(), []);
+
+    useEffect(() => {
         if (isTV) return;
-        const autoEnter = !!current && !paused && status !== 'failed';
+        const autoEnter = !!current && !paused && status !== 'failed' && !multi.active;
         if (BuriPip?.setPlaybackState) BuriPip.setPlaybackState(autoEnter, paused, userMuted);
         else BuriPip?.setAutoEnter(autoEnter);
-    }, [current, paused, status, userMuted]);
+    }, [current, paused, status, userMuted, multi.active]);
 
     // ── Actions ─────────────────────────────────────────────────────────────
 
     const handleSelectChannel = useCallback(
         (ch) => {
             if (!ch) return;
+            // En varios canales, elegir uno de la lista lo agrega (o lo quita)
+            if (multi.active) {
+                multi.toggleChannel(ch);
+                return;
+            }
             selectChannel(ch);
             setPaused(false);
             if (!isTV) showControls();
         },
-        [selectChannel, showControls],
+        [selectChannel, showControls, multi],
     );
 
     // Navegación circular entre canales
@@ -214,11 +241,22 @@ function IPTVPlayer() {
         onSelectSource: handleSelectSource,
     });
 
+    const enterMulti = useCallback(() => {
+        setPaused(false);
+        multi.enter();
+    }, [multi]);
+    const exitMulti = useCallback(() => {
+        multi.exit();
+        setPaused(false);
+    }, [multi]);
+
     const tvControls = useTVControls({
-        theater,
+        // En varios canales las flechas mueven el foco entre recuadros
+        theater: theater && !multi.active,
         setTheater,
         setPaused,
-        onZap: zapping.zapBy,
+        // CH+/CH− no cambian de canal en varios canales (los números sí agregan)
+        onZap: multi.active ? noop : zapping.zapBy,
         onDigit: zapping.typeDigit,
         onOption: zapping.optionBy,
         onInfo: zapping.showCurrent,
@@ -240,49 +278,30 @@ function IPTVPlayer() {
 
     const toggleTheater = useCallback(() => setTheater((t) => !t), []);
 
+    // Atrás en varios canales: primero sale de pantalla completa, luego de varios
+    useEffect(() => {
+        if (!multi.active) return;
+        const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+            if (!isTV && mobileControls.fullscreen) mobileControls.exitFullscreen();
+            else if (isTV && theater) setTheater(false);
+            else exitMulti();
+            return true;
+        });
+        return () => sub.remove();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        multi.active,
+        mobileControls.fullscreen,
+        mobileControls.controlsVisible,
+        theater,
+        tvControls.ctrlFocused,
+        exitMulti,
+    ]);
+
     const handleRetry = useCallback(() => {
         setPaused(false);
         retry();
     }, [retry]);
-
-    // ── Chromecast ──────────────────────────────────────────────────────────
-
-    const sourceRef = useRef(null);
-    sourceRef.current = source ? { ...source, name: current?.name } : null;
-
-    const castSource = useCallback(async (session, src) => {
-        if (!src || src.type === 'web') return; // los embeds web no se pueden castear
-        await session.client.loadMedia({
-            mediaInfo: {
-                contentUrl: src.url,
-                contentType: src.url.includes('.m3u8') ? 'application/x-mpegURL' : 'video/mp2t',
-                streamType: 'live',
-                metadata: { type: 'generic', title: src.name },
-            },
-        });
-    }, []);
-
-    // Al conectar un Chromecast (desde el diálogo o el CastButton), carga lo actual
-    useEffect(() => {
-        if (isTV) return;
-        const sub = GoogleCast.getSessionManager().onSessionStarted((session) => {
-            castSource(session, sourceRef.current).catch((e) => console.log('Error casting:', e));
-        });
-        return () => sub.remove();
-    }, [castSource]);
-
-    // Si ya hay sesión de cast activa, al cambiar de canal/opción se actualiza
-    useEffect(() => {
-        if (isTV || !source) return;
-        (async () => {
-            try {
-                const session = await GoogleCast.getSessionManager().getCurrentCastSession();
-                if (session) await castSource(session, sourceRef.current);
-            } catch (error) {
-                console.log('Error casting:', error);
-            }
-        })();
-    }, [source, castSource]);
 
     // ── Render ──────────────────────────────────────────────────────────────
 
@@ -305,6 +324,7 @@ function IPTVPlayer() {
             onProgress: recovery.handleProgress,
             onPlaying: recovery.handlePlaying,
             onPlaybackState: recovery.handlePlaybackState,
+            onAudioTracks: recovery.handleAudioTracks,
             onError: recovery.handleError,
             onStopped: recovery.handleStopped,
             onRetry: handleRetry,
@@ -326,6 +346,7 @@ function IPTVPlayer() {
             recovery.handleProgress,
             recovery.handlePlaying,
             recovery.handlePlaybackState,
+            recovery.handleAudioTracks,
             recovery.handleError,
             recovery.handleStopped,
             handleRetry,
@@ -334,7 +355,24 @@ function IPTVPlayer() {
 
     if (loading || !slowModeReady) return <LoadingScreen error={loadError} onRetry={retryLoad} />;
 
+    // Lo que comparten los recuadros de varios canales
+    const multiProps = {
+        muted: userMuted,
+        paused,
+        vlcGlobalOpts,
+        slowMode,
+        rankSources,
+        getEnginePref,
+        rememberSource,
+        recordSourceResult,
+        reportStall,
+        reportBandwidth,
+    };
+
     const common = {
+        multi: { ...multi, exit: exitMulti },
+        multiProps,
+        onEnterMulti: enterMulti,
         channels,
         current,
         currentIndex,
@@ -366,6 +404,7 @@ function IPTVPlayer() {
                 setCtrlFocused={tvControls.setCtrlFocused}
                 playNode={tvControls.playNode}
                 registerPlayBtn={tvControls.registerPlayBtn}
+                registerTheaterBtn={tvControls.registerTheaterBtn}
                 tvUiVisible={tvControls.tvUiVisible}
                 hideTvUi={tvControls.hideTvUi}
                 toggleTheater={toggleTheater}
@@ -377,6 +416,7 @@ function IPTVPlayer() {
         <MobileLayout
             {...common}
             inPip={inPip}
+            onPip={pipAvailable ? enterPip : undefined}
             fullscreen={mobileControls.fullscreen}
             controlsVisible={mobileControls.controlsVisible}
             toggleFullscreen={mobileControls.toggleFullscreen}

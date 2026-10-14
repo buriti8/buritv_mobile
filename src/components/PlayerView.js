@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ActivityIndicator, Pressable } from 'react-native';
 import Video from 'react-native-video';
 import { VLCPlayer } from 'react-native-vlc-media-player';
@@ -37,6 +37,10 @@ const EXO_BUFFER_SLOW = {
 };
 // VLC: caché de red más grande en modo lento (se agrega al final: manda)
 const VLC_SLOW_OPTS = ['--network-caching=8000', '--live-caching=8000'];
+// Al cambiar de canal u opción se espera este tiempo antes de montar el player
+// nuevo: si se pasa rápido por varios, solo se abre el último (crear y cerrar
+// un player por cada toque congela la app y a veces deja VLC sin audio).
+const SWITCH_SETTLE_MS = 350;
 // Sin el "LIVE" propio de react-native-video: la app ya muestra el suyo
 const EXO_CONTROLS_STYLES = { hideLiveBadge: true };
 
@@ -65,35 +69,66 @@ export default function PlayerView({
     onProgress,
     onPlaying,
     onPlaybackState,
+    onAudioTracks,
     onError,
     onStopped,
     onRetry,
 }) {
+    // Lo que realmente está montado: sigue al pedido, pero un cambio de
+    // canal/opción espera a que se deje de cambiar. Reintentos y cambios de
+    // motor de la misma señal son inmediatos.
+    const [shown, setShown] = useState({ source, engine, playerKey });
+    useEffect(() => {
+        if (!source) return;
+        const next = { source, engine, playerKey };
+        if (shown.source?.url === source.url) {
+            if (shown.engine !== engine || shown.playerKey !== playerKey) setShown(next);
+            return;
+        }
+        const t = setTimeout(() => setShown(next), SWITCH_SETTLE_MS);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [source?.url, engine, playerKey]);
+
     if (!source) return null;
+    // Mientras el player viejo sigue montado, sus eventos no cuentan para la señal nueva
+    const settled =
+        shown.source?.url === source.url &&
+        shown.engine === engine &&
+        shown.playerKey === playerKey;
+    const guard = fn => (fn ? (...args) => (settled ? fn(...args) : undefined) : undefined);
+    onProgress = guard(onProgress);
+    onPlaying = guard(onPlaying);
+    onPlaybackState = guard(onPlaybackState);
+    onAudioTracks = guard(onAudioTracks);
+    onError = guard(onError);
+    onStopped = guard(onStopped);
     // (al cambiar el modo lento, App llama a retry(): sube playerKey y el
     // player se rearma con el buffer/caché nuevos)
-    const key = `${engine}-${source.url}-${playerKey}`;
-    const vlcOpts = source.vlcOpts ? source.vlcOpts.map(o => `--${o}`) : vlcGlobalOpts;
+    const key = `${shown.engine}-${shown.source.url}-${shown.playerKey}`;
+    const vlcOpts = shown.source.vlcOpts
+        ? shown.source.vlcOpts.map(o => `--${o}`)
+        : vlcGlobalOpts;
 
     return (
         <>
-            {engine === 'web' && (
+            {shown.engine === 'web' && (
                 <WebPlayerView
                     key={key}
-                    url={source.url}
+                    url={shown.source.url}
                     muted={muted}
                     onLoaded={onPlaying}
                     onError={onError}
                 />
             )}
 
-            {engine === 'exo' && (
+            {shown.engine === 'exo' && (
                 <Video
                     key={key}
                     style={styles.player}
                     source={{
-                        uri: source.url,
-                        type: /\.m3u8(\?|$)/i.test(source.url) ? 'm3u8' : undefined,
+                        uri: shown.source.url,
+                        type: /\.m3u8(\?|$)/i.test(shown.source.url) ? 'm3u8' : undefined,
                         minLoadRetryCount: 3,
                         bufferConfig: slowMode ? EXO_BUFFER_SLOW : EXO_BUFFER,
                     }}
@@ -114,16 +149,17 @@ export default function PlayerView({
                     onProgress={onProgress}
                     onReadyForDisplay={onPlaying}
                     onPlaybackStateChanged={onPlaybackState}
+                    onAudioTracks={onAudioTracks}
                     onError={onError}
                     onEnd={onStopped}
                 />
             )}
 
-            {engine === 'vlc' && (
+            {shown.engine === 'vlc' && (
                 <VLCPlayer
                     key={key}
                     style={styles.player}
-                    source={{ uri: source.url }}
+                    source={{ uri: shown.source.url }}
                     paused={paused}
                     muted={muted}
                     playInBackground={background}

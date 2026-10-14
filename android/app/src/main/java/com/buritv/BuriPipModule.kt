@@ -63,6 +63,19 @@ class BuriPipModule(private val ctx: ReactApplicationContext) :
         promise.resolve(activity != null && isSupported(activity))
     }
 
+    /** Botón de imagen en imagen: pasa a la ventana flotante ahora mismo. */
+    @ReactMethod
+    fun enterPip() {
+        val activity = ctx.currentActivity ?: return
+        activity.runOnUiThread {
+            if (!isSupported(activity) || activity.isInPictureInPictureMode) return@runOnUiThread
+            try {
+                activity.enterPictureInPictureMode(buildParams(activity))
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     /**
      * TV: que una vista (y lo que tenga adentro) no reciba el foco del
      * control remoto. El WebView de los canales web se quedaba con el foco y

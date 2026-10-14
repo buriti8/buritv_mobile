@@ -55,11 +55,11 @@ Open Settings > Languages & Frameworks > Android SDK > SDK Platforms > Show Pack
 
 #### Android
 
-    yarn hot-updater deploy -m '' -f -p android -t 0.0.3 -c "buritv_production"
+    yarn hot-updater deploy -m '' -f -p android -t 0.1.0 -c "buritv_production"
 
 #### iOS
 
-    yarn hot-updater deploy -m '' -f -p ios -t 0.0.3 -c "buritv_production"
+    yarn hot-updater deploy -m '' -f -p ios -t 0.1.0 -c "buritv_production"
 
 ### Visualize the update
 

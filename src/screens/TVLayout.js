@@ -15,14 +15,17 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { TV_ROW_H, TV_SECTION_H, TV_HEADER_H } from '../constants/config';
 import { styles } from '../styles/styles';
 import ChannelRow from '../components/ChannelRow';
+import SectionHeader from '../components/SectionHeader';
 import PlayerView from '../components/PlayerView';
 import InfoBar from '../components/InfoBar';
 import TVControlBar from '../components/TVControlBar';
 import ChannelFilters, { EmptyResults } from '../components/ChannelFilters';
 import ZapOSD from '../components/ZapOSD';
+import MultiView from '../components/MultiView';
+import { MultiTVBar } from '../components/MultiBars';
 import useChannelFilter, { ALL } from '../hooks/useChannelFilter';
 
-const LIST_PAD_TOP = 10;
+const LIST_PAD_TOP = 6;
 
 export default function TVLayout({
     channels,
@@ -39,6 +42,7 @@ export default function TVLayout({
     setCtrlFocused,
     playNode,
     registerPlayBtn,
+    registerTheaterBtn,
     tvUiVisible,
     hideTvUi,
     tvPing,
@@ -53,11 +57,16 @@ export default function TVLayout({
     toggleTheater,
     favorites,
     toggleFavorite,
+    // Varios canales a la vez
+    multi,
+    multiProps,
+    onEnterMulti,
 }) {
     const { height: winH } = useWindowDimensions();
     const insets = useSafeAreaInsets();
     // En pantalla completa, con los controles ocultos, no se dejan enfocables
-    const controlsHidden = theater && !tvUiVisible;
+    // (en varios canales la barra de abajo siempre está a la vista)
+    const controlsHidden = theater && !tvUiVisible && !multi.active;
     // La barra se desmonta sin disparar blur: olvidar el botón enfocado
     useEffect(() => {
         if (controlsHidden) setCtrlFocused(null);
@@ -137,6 +146,7 @@ export default function TVLayout({
                                     filterKey={`${filter.category}|${filter.query.trim()}`}
                                     showSections={filter.category === ALL && !filter.query.trim()}
                                     currentId={current?.id}
+                                    activeIds={multi.activeIds}
                                     favorites={favorites}
                                     initialIndex={currentIndex}
                                     height={listH}
@@ -158,29 +168,52 @@ export default function TVLayout({
 
             <View style={styles.tvPlayerCol}>
                 <View style={styles.tvVideoBox}>
-                    <PlayerView {...playerProps} />
+                    {multi.active ? (
+                        <MultiView
+                            tiles={multi.tiles}
+                            channels={channels}
+                            focusId={multi.focusId}
+                            max={multi.max}
+                            onListen={multi.setFocusId}
+                            onRemove={multi.remove}
+                            onAdd={multi.openPicker}
+                            onPick={multi.pick}
+                            onClosePicker={multi.closePicker}
+                            picking={multi.picking}
+                            activeIds={multi.activeIds}
+                            favorites={favorites}
+                            {...multiProps}
+                        />
+                    ) : (
+                        <PlayerView {...playerProps} />
+                    )}
                     {/* Con los controles a la vista se oscurece el video para que
                         los botones del centro se lean sobre cualquier imagen */}
-                    <View
-                        style={[styles.tvDim, { opacity: tvUiVisible && !osd ? 1 : 0 }]}
-                        pointerEvents="none"
-                    />
-                    <View
-                        style={[
-                            styles.tvTopScrim,
-                            {
-                                opacity: !osd && (tvUiVisible || status !== 'playing') ? 1 : 0,
-                            },
-                        ]}
-                        pointerEvents="none"
-                    >
-                        <InfoBar
-                            channel={current}
-                            sourceIndex={sourceIndex}
-                            channelNumber={currentIndex + 1}
-                            live={status === 'playing'}
-                        />
-                    </View>
+                    {!multi.active && (
+                        <>
+                            <View
+                                style={[styles.tvDim, { opacity: tvUiVisible && !osd ? 1 : 0 }]}
+                                pointerEvents="none"
+                            />
+                            <View
+                                style={[
+                                    styles.tvTopScrim,
+                                    {
+                                        opacity:
+                                            !osd && (tvUiVisible || status !== 'playing') ? 1 : 0,
+                                    },
+                                ]}
+                                pointerEvents="none"
+                            >
+                                <InfoBar
+                                    channel={current}
+                                    sourceIndex={sourceIndex}
+                                    channelNumber={currentIndex + 1}
+                                    live={status === 'playing'}
+                                />
+                            </View>
+                        </>
+                    )}
                     <ZapOSD osd={osd} channels={channels} />
                     {/* Pantalla completa sin controles: este receptor tiene el foco,
                         así ↑/↓ y ←/→ llegan al control remoto (canal / opción) y OK
@@ -193,11 +226,26 @@ export default function TVLayout({
                             onPress={tvPing}
                         />
                     )}
-                    {!theater && playNode && (
+                    {!theater && !multi.active && playNode && (
                         <TVFocusGuideView style={styles.tvFocusBridge} destinations={[playNode]} />
                     )}
                 </View>
-                {!controlsHidden && (
+                {multi.active && (
+                    <MultiTVBar
+                        count={multi.tiles.length}
+                        max={multi.max}
+                        muted={muted}
+                        theater={theater}
+                        ctrlFocused={ctrlFocused}
+                        setCtrlFocused={setCtrlFocused}
+                        registerTheaterBtn={registerTheaterBtn}
+                        toggleMute={toggleMute}
+                        toggleTheater={toggleTheater}
+                        onAdd={multi.openPicker}
+                        onExit={multi.exit}
+                    />
+                )}
+                {!multi.active && !controlsHidden && (
                     <TVControlBar
                         preferPlay={theater}
                         tvUiVisible={tvUiVisible}
@@ -205,6 +253,7 @@ export default function TVLayout({
                         ctrlFocused={ctrlFocused}
                         setCtrlFocused={setCtrlFocused}
                         registerPlayBtn={registerPlayBtn}
+                        registerTheaterBtn={registerTheaterBtn}
                         paused={paused}
                         muted={muted}
                         channel={current}
@@ -219,6 +268,7 @@ export default function TVLayout({
                         toggleTheater={toggleTheater}
                         favorite={!!current && favorites.has(current.id)}
                         toggleFavorite={toggleCurrentFavorite}
+                        onMulti={onEnterMulti}
                     />
                 )}
             </View>
@@ -240,6 +290,7 @@ const TVChannelList = React.memo(function TVChannelList({
     filterKey,
     showSections,
     currentId,
+    activeIds,
     favorites,
     initialIndex,
     height,
@@ -251,6 +302,8 @@ const TVChannelList = React.memo(function TVChannelList({
     onLastRow,
     focusRef,
 }) {
+    // Varios canales: están "activos" todos los que hay en pantalla
+    const isActive = id => (activeIds ? activeIds.has(id) : id === currentId);
     const scrollRef = useRef(null);
     const firstRowRef = useRef(null);
     const lastFocusAt = useRef(0);
@@ -287,11 +340,23 @@ const TVChannelList = React.memo(function TVChannelList({
     const { rows, offsets } = useMemo(() => {
         const out = [];
         const ys = {};
+        const counts = {};
+        if (showSections) {
+            items.forEach(({ ch }) => {
+                if (ch.group) counts[ch.group] = (counts[ch.group] || 0) + 1;
+            });
+        }
         let y = LIST_PAD_TOP;
         let lastGroup;
         items.forEach(({ ch, index }) => {
             if (showSections && ch.group && ch.group !== lastGroup) {
-                out.push({ type: 'header', title: ch.group, key: `h-${index}` });
+                out.push({
+                    type: 'header',
+                    title: ch.group,
+                    count: counts[ch.group],
+                    first: out.length === 0,
+                    key: `h-${index}`,
+                });
                 y += TV_SECTION_H;
                 lastGroup = ch.group;
             }
@@ -377,21 +442,26 @@ const TVChannelList = React.memo(function TVChannelList({
             >
                 {rows.map(row =>
                     row.type === 'header' ? (
-                        <Text key={row.key} style={styles.sectionTitleTV}>
-                            {row.title}
-                        </Text>
+                        <SectionHeader
+                            key={row.key}
+                            tv
+                            title={row.title}
+                            count={row.count}
+                            first={row.first}
+                            height={TV_SECTION_H}
+                        />
                     ) : (
                         <ChannelRow
                             key={row.key}
                             ref={
                                 row.index === firstIndex ||
                                 row.index === lastIndex ||
-                                row.ch.id === currentId
+                                isActive(row.ch.id)
                                     ? node => {
                                           // Con un solo canal es a la vez el primero y el último
                                           if (row.index === firstIndex) firstRowRef.current = node;
                                           if (row.index === lastIndex) lastRowRef.current = node;
-                                          if (row.ch.id === currentId) activeRowRef.current = node;
+                                          if (isActive(row.ch.id)) activeRowRef.current = node;
                                           else if (activeRowRef.current === node)
                                               activeRowRef.current = null;
                                       }
@@ -399,7 +469,7 @@ const TVChannelList = React.memo(function TVChannelList({
                             }
                             item={row.ch}
                             index={row.index}
-                            active={row.ch.id === currentId}
+                            active={isActive(row.ch.id)}
                             favorite={favorites.has(row.ch.id)}
                             hasTVPreferredFocus={!initialFocusDone && row.index === preferredIndex}
                             nextFocusUp={

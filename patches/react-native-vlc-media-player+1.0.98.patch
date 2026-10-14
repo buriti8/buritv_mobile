@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native-vlc-media-player/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java b/node_modules/react-native-vlc-media-player/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
-index 8c7acdf..376a65a 100644
+index 8c7acdf..30267fa 100644
 --- a/node_modules/react-native-vlc-media-player/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
 +++ b/node_modules/react-native-vlc-media-player/android/src/main/java/com/yuanzhou/vlc/vlcplayer/ReactVlcPlayerView.java
 @@ -65,6 +65,7 @@ class ReactVlcPlayerView extends TextureView implements
@@ -44,16 +44,62 @@ index 8c7acdf..376a65a 100644
              // this.getHolder().setKeepScreenOn(false);
              WritableMap map = Arguments.createMap();
              map.putString("type", "Paused");
-@@ -496,6 +512,8 @@ class ReactVlcPlayerView extends TextureView implements
-         vout.detachViews();
-         //surfaceView.removeOnLayoutChangeListener(onLayoutChangeListener);
-         mMediaPlayer.release();
+@@ -491,13 +507,31 @@ class ReactVlcPlayerView extends TextureView implements
+         if (libvlc == null)
+             return;
+ 
+-        final IVLCVout vout = mMediaPlayer.getVLCVout();
+-        vout.removeCallback(callback);
+-        vout.detachViews();
+-        //surfaceView.removeOnLayoutChangeListener(onLayoutChangeListener);
+-        mMediaPlayer.release();
+-        libvlc.release();
++        final MediaPlayer oldPlayer = mMediaPlayer;
++        final LibVLC oldLibvlc = libvlc;
 +        // Evita que el ciclo de vida (onHostPause/Resume) use un player liberado
 +        mMediaPlayer = null;
-         libvlc.release();
          libvlc = null;
++        if (oldPlayer != null) {
++            final IVLCVout vout = oldPlayer.getVLCVout();
++            vout.removeCallback(callback);
++            vout.detachViews();
++            // Sin escucha: los eventos del player que se cierra no deben llegar
++            oldPlayer.setEventListener(null);
++        }
++        // Liberar VLC tarda cientos de ms: fuera del hilo de UI, para que
++        // cambiar de canal/opción no congele la app
++        new Thread(new Runnable() {
++            @Override
++            public void run() {
++                try {
++                    if (oldPlayer != null) oldPlayer.release();
++                    oldLibvlc.release();
++                } catch (Exception e) {
++                    Log.w("ReactVlcPlayerView", "release", e);
++                }
++            }
++        }).start();
  
-@@ -751,6 +769,10 @@ class ReactVlcPlayerView extends TextureView implements
+         if(mProgressUpdateRunnable != null){
+             mProgressUpdateHandler.removeCallbacks(mProgressUpdateRunnable);
+@@ -578,10 +612,14 @@ class ReactVlcPlayerView extends TextureView implements
+         mMuted = muted;
+         if (mMediaPlayer != null) {
+             if (muted) {
+-                this.preVolume = mMediaPlayer.getVolume();
++                // Solo recordar el volumen si no estaba ya en silencio: si se
++                // mutea dos veces, preVolume quedaba en 0 y al reactivar el
++                // sonido seguía mudo
++                int vol = mMediaPlayer.getVolume();
++                if (vol > 0) this.preVolume = vol;
+                 mMediaPlayer.setVolume(0);
+             } else {
+-                mMediaPlayer.setVolume(this.preVolume);
++                mMediaPlayer.setVolume(this.preVolume > 0 ? this.preVolume : 100);
+             }
+         }
+     }
+@@ -751,6 +789,10 @@ class ReactVlcPlayerView extends TextureView implements
          Log.i(TAG, "Set acceptInvalidCertificates to: " + accept);
      }
  
